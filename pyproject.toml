@@ -13,7 +13,7 @@ dependencies = [
   "pylatexenc>=2.10",
   "Pillow >= 9.0.0"
 ]
-version = "0.2.0"
+version = "0.3.0"
 authors = [
   { name="Nikolas Longen", email="nlongen@rptu.de" },
   {name = "Patrick Pfau", email = "ppfau@rptu.de"},
