@@ -113,5 +113,4 @@ docker run -p 8080:8080 quantum-app
 ```
 3.	Access: Navigate your browser to http://localhost:8080.
 ________________________________________
-Are there any specific sections you would like me to expand upon, such as adding a dedicated section on how to register custom visualizations to the VISUALIZATION_REGISTRY, or is this README ready to be committed to your repository?
 
