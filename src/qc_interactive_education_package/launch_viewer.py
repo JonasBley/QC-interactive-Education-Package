@@ -9,7 +9,8 @@ import qiskit.qasm2
 from qiskit.quantum_info import Statevector
 
 # Import your viewer classes
-from qc_interactive_education_package import InteractiveViewer, ChallengeViewer, QuantumCurriculum
+from qc_interactive_education_package import InteractiveViewer, ChallengeViewer
+from .quantum_library import QuantumCurriculum
 
 
 def launch_tool(num_qubits=3, initial_state=None, show_circuit=True, preloaded_circuit=None):
