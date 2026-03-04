@@ -33,5 +33,5 @@ ENV PYTHONPATH=/app/src
 EXPOSE 8080
 
 # CRITICAL FIX 2: Target the exact relative path of the notebook.
-# Execute Voilà bound to all network interfaces (0.0.0.0) with CORS disabled.
-CMD voila --no-browser --port=${PORT:-8080} --Voila.ip=0.0.0.0 --ServerApp.allow_origin="*" --ServerApp.disable_check_xsrf=True --theme=light src/qc_interactive_education_package/app.ipynb
+# CRITICAL FIX 3: Enable tracebacks to expose the silent Python compilation error
+CMD voila --no-browser --port=${PORT:-8080} --Voila.ip=0.0.0.0 --ServerApp.allow_origin="*" --ServerApp.disable_check_xsrf=True --show_tracebacks=True --theme=light src/qc_interactive_education_package/app.ipynb
