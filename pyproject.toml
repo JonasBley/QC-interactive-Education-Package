@@ -21,7 +21,7 @@ authors = [
   { name="Maximilian Kiefer-Emmanouilidis", email="maximilian.kiefer@rptu.de" }
 ]
 description = "Quantuk QC-interactive-Education-Package"
-readme = "README.md"
+readme = "readme.md"
 requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Python :: 3",
