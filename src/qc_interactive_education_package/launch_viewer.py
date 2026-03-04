@@ -126,65 +126,8 @@ def launch_challenge(num_qubits=1, initial_state=[1, 0], target_state=[1, -1], s
     except KeyboardInterrupt:
         print("\nShutting down Quantum Challenge...")
 
-
 # ==========================================
-# 1. JSON INGESTION & PARSING PIPELINE
-# ==========================================
-
-def load_libraries(filepath="library.json"):
-    """Reads the static JSON configuration and parses it into mathematical objects."""
-    try:
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"❌ Critical Error: Configuration file '{filepath}' not found.")
-        return {}, {}
-    except json.JSONDecodeError as e:
-        print(f"❌ Critical Error: Invalid JSON syntax in '{filepath}'. Details: {e}")
-        return {}, {}
-
-    # Parse Algorithms (QASM -> QuantumCircuit)
-    algos = {}
-    for name, qasm_str in data.get("algorithms", {}).items():
-        try:
-            algos[name] = qiskit.qasm2.loads(qasm_str)
-        except Exception as e:
-            print(f"Warning: Failed to compile QASM for '{name}'. {e}")
-
-    # Parse Challenges (Lists -> Complex Numpy Arrays)
-    challenges = {}
-    for name, chal_data in data.get("challenges", {}).items():
-        try:
-            # Reconstruct complex tensors from [real, imag] pairs or standard floats
-            init_parsed = _parse_complex_array(chal_data["initial_state"])
-            targ_parsed = _parse_complex_array(chal_data["target_state"])
-
-            challenges[name] = {
-                "num_qubits": chal_data["num_qubits"],
-                "initial_state": init_parsed,
-                "target_state": targ_parsed
-            }
-        except Exception as e:
-            print(f"Warning: Failed to parse state array for '{name}'. {e}")
-
-    return algos, challenges
-
-
-def _parse_complex_array(state_list):
-    """Safely converts generic JSON arrays into typed Python complex arrays."""
-    if not state_list:
-        return None
-    # If standard 1D array of floats (purely real state)
-    if isinstance(state_list[0], (int, float)):
-        return [complex(x, 0.0) for x in state_list]
-    # If 2D array of [real, imaginary] pairs
-    elif isinstance(state_list[0], list):
-        return [complex(x[0], x[1]) for x in state_list]
-    raise ValueError("Unrecognized array format in JSON.")
-
-
-# ==========================================
-# 2. SPA ENTRY POINT APPLICATION
+# SPA ENTRY POINT APPLICATION
 # ==========================================
 
 class QuantumAppLauncher:
