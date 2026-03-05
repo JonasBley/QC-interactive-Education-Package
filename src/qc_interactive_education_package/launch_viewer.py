@@ -7,6 +7,7 @@ import numpy as np
 import json
 import qiskit.qasm2
 from qiskit.quantum_info import Statevector
+from qiskit import QuantumCircuit
 
 # Import your viewer classes
 from qc_interactive_education_package import InteractiveViewer, ChallengeViewer
@@ -156,32 +157,78 @@ class QuantumViewer:
         )
 
     def _build_sandbox_tab(self):
-        self.sb_qubits = widgets.Dropdown(options=[1, 2, 3, 4, 5, 6], value=3, description='Qubits:')
+        # Expanded to 9 qubits based on our previous architectural constraints
+        self.sb_qubits = widgets.Dropdown(options=[1, 2, 3, 4, 5, 6, 7, 8, 9], value=3, description='Qubits:')
         self.sb_circuit = widgets.Checkbox(value=True, description='Show Circuit UI', indent=False)
-        self.sb_states = {"|0...0⟩ (Ground State)": None, "|+...+⟩ (Equal Superposition)": "superposition"}
-        self.sb_initial = widgets.Dropdown(options=list(self.sb_states.keys()), value="|0...0⟩ (Ground State)",
-                                           description='Initial State:')
+
+        self.sb_initial = widgets.Dropdown(description='Initial State:', layout={'width': '380px'})
+
+        # 1. Initialize the dropdown dynamically based on the default value (3)
+        self._update_state_dropdown({'new': self.sb_qubits.value})
+
+        # 2. Bind the observer to mathematically lock state options to qubit dimensions
+        self.sb_qubits.observe(self._update_state_dropdown, names='value')
 
         btn = widgets.Button(description="Launch Sandbox", layout={'width': '100%', 'margin': '15px 0px 0px 0px'})
-        btn.style.button_color = '#3498db';
-        btn.style.text_color = 'white';
+        btn.style.button_color = '#3498db'
+        btn.style.text_color = 'white'
         btn.style.font_weight = 'bold'
         btn.on_click(self._launch_sandbox)
+
         return widgets.VBox([self.sb_qubits, self.sb_initial, self.sb_circuit, btn],
                             layout={'padding': '20px', 'align_items': 'center'})
+
+    def _update_state_dropdown(self, change):
+        n = change['new']
+
+        # Base states available to all dimensions
+        options_dict = {
+            "|0...0⟩ (Ground State)": "ground",
+            "|+...+⟩ (Equal Superposition)": "superposition"
+        }
+
+        # Dimension-specific entanglement topologies
+        if n == 2:
+            options_dict["|Φ⁺⟩ = (|00⟩ + |11⟩)/√2 (Bell State)"] = "ghz"
+            options_dict["|Ψ⁺⟩ = (|01⟩ + |10⟩)/√2 (Bell / W-State)"] = "w_state"
+        elif n > 2:
+            options_dict[f"|GHZ⟩ = (|0...0⟩ + |1...1⟩)/√2 ({n}Q)"] = "ghz"
+            options_dict[f"|W⟩ = (|100...⟩ + |010...⟩ + ...)/√{n} ({n}Q)"] = "w_state"
+
+        # Store the current mapping in the class memory for the launch function
+        self.sb_states_map = options_dict
+
+        old_val = self.sb_initial.value
+        self.sb_initial.options = list(options_dict.keys())
+
+        # Attempt to gracefully retain the user's previous selection if it still exists
+        if old_val in self.sb_initial.options:
+            self.sb_initial.value = old_val
+        else:
+            self.sb_initial.value = list(options_dict.keys())[0]
 
     def _build_algorithm_tab(self):
         options = list(self.algos.keys()) if self.algos else ["No algorithms loaded"]
         self.algo_dropdown = widgets.Dropdown(options=options, description='Algorithm:', layout={'width': '350px'})
-        self.algo_circuit = widgets.Checkbox(value=True, description='Show Circuit UI', indent=False)
+
+        # Define the two configuration toggles
+        self.algo_circuit = widgets.Checkbox(value=True, description='Show Circuit UI', indent=False,
+                                             layout={'width': '150px'})
+        self.algo_final_state = widgets.Checkbox(value=True, description='Show Final State', indent=False,
+                                                 layout={'width': '150px'})
+
+        # Group them horizontally to maintain a compact control panel
+        checkbox_row = widgets.HBox([self.algo_circuit, self.algo_final_state],
+                                    layout={'justify_content': 'center', 'grid_gap': '20px'})
 
         btn = widgets.Button(description="Study Algorithm", layout={'width': '100%', 'margin': '15px 0px 0px 0px'})
-        btn.style.button_color = '#9b59b6';
-        btn.style.text_color = 'white';
+        btn.style.button_color = '#9b59b6'
+        btn.style.text_color = 'white'
         btn.style.font_weight = 'bold'
         btn.disabled = not bool(self.algos)
         btn.on_click(self._launch_algorithm)
-        return widgets.VBox([self.algo_dropdown, self.algo_circuit, btn],
+
+        return widgets.VBox([self.algo_dropdown, checkbox_row, btn],
                             layout={'padding': '20px', 'align_items': 'center'})
 
     def _build_challenge_tab(self):
@@ -201,27 +248,101 @@ class QuantumViewer:
     def _launch_sandbox(self, b):
         num_qubits = self.sb_qubits.value
         state_key = self.sb_initial.value
-        initial_state = None
-        if self.sb_states[state_key] == "superposition":
-            dim = 2 ** num_qubits
-            initial_state = [1.0 / np.sqrt(dim)] * dim
+        routing_flag = self.sb_states_map[state_key]  # Fetch from the dynamic map
+
+        # We always initialize the physical canvas at the absolute ground state
+        # The circuit itself will dictate the final state amplitudes.
+        dim = 2 ** num_qubits
+        initial_state = [1.0] + [0.0] * (dim - 1)
+
+        preloaded_qc = QuantumCircuit(num_qubits)
+        has_circuit = False
+
+        if routing_flag == "superposition":
+            # Apply Haddamards to all qubits
+            preloaded_qc.h(range(num_qubits))
+            has_circuit = True
+
+        elif routing_flag == "ghz":
+            # |GHZ>: H on q0, cascaded CNOTs down the register
+            preloaded_qc.h(0)
+            for i in range(num_qubits - 1):
+                preloaded_qc.cx(i, i + 1)
+            has_circuit = True
+
+        elif routing_flag == "w_state":
+            # |W>: Advanced n-qubit generation using iteratively decaying controlled-Ry rotations
+            preloaded_qc.x(0)
+            for i in range(num_qubits - 1):
+                # Calculate the exact rotation angle to distribute the amplitude evenly
+                theta = 2 * np.arccos(1.0 / np.sqrt(num_qubits - i))
+                preloaded_qc.cry(theta, i, i + 1)
+                preloaded_qc.cx(i + 1, i)
+            has_circuit = True
 
         with self.output:
             clear_output(wait=True)
-            viewer = InteractiveViewer(num_qubits=num_qubits, initial_state=initial_state,
-                                       show_circuit=self.sb_circuit.value)
-            viewer.display()
+
+            if has_circuit:
+                # 1. Initialize viewer with ground state and our generated circuit payload
+                viewer = InteractiveViewer(num_qubits=num_qubits, initial_state=initial_state,
+                                           preloaded_circuit=preloaded_qc, show_circuit=self.sb_circuit.value)
+
+                # 2. Fast-forward the internal state machine so the gates are fully applied upon initialization
+                while viewer._redo_circuit_history:
+                    viewer._circuit_history.append(viewer.circuit.copy())
+                    viewer._action_history.append(viewer._redo_action_history.pop())
+                    viewer.circuit = viewer._redo_circuit_history.pop()
+
+                # 3. Mount to the DOM (this renders the final state and the completed circuit image)
+                viewer.display()
+            else:
+                # Ground state requires no circuit generation, render normally
+                viewer = InteractiveViewer(num_qubits=num_qubits, initial_state=initial_state,
+                                           show_circuit=self.sb_circuit.value)
+                viewer.display()
 
     def _launch_algorithm(self, b):
-        qc_algo = self.algos[self.algo_dropdown.value]
-        # Native Qiskit object simulation ensures 100% mathematical fidelity
-        initial_state = ([1.0] + [0.0] * ((2 ** qc_algo.num_qubits) - 1))
-        target_sv = Statevector.from_instruction(qc_algo).data.tolist()
+        qc_raw = self.algos[self.algo_dropdown.value]
+
+        # Isolate initialization instructions to define the true mathematical starting state
+        init_circ = QuantumCircuit(qc_raw.num_qubits)
+        clean_circ = QuantumCircuit(qc_raw.num_qubits)
+
+        for inst in qc_raw.data:
+            if inst.operation.name == 'initialize':
+                init_circ.append(inst)
+            else:
+                clean_circ.append(inst)
+
+        # Calculate the starting tensor from the isolated initialization gates
+        initial_state = Statevector.from_instruction(init_circ).data.tolist()
+
+        # The target state must always reflect the full mathematical execution
+        target_sv = Statevector.from_instruction(qc_raw).data.tolist()
 
         with self.output:
             clear_output(wait=True)
-            viewer = ChallengeViewer(num_qubits=qc_algo.num_qubits, initial_state=initial_state, target_state=target_sv,
-                                     preloaded_circuit=qc_algo, show_circuit=self.algo_circuit.value)
+
+            if self.algo_final_state.value:
+                # Comparative Mode: Instantiate the dual-canvas ChallengeViewer
+                viewer = ChallengeViewer(
+                    num_qubits=clean_circ.num_qubits,
+                    initial_state=initial_state,
+                    target_state=target_sv,
+                    preloaded_circuit=clean_circ,
+                    show_circuit=self.algo_circuit.value,
+                    is_assessment=False
+                )
+            else:
+                # Streamlined Mode: Instantiate the single-canvas InteractiveViewer
+                viewer = InteractiveViewer(
+                    num_qubits=clean_circ.num_qubits,
+                    initial_state=initial_state,
+                    preloaded_circuit=clean_circ,
+                    show_circuit=self.algo_circuit.value
+                )
+
             viewer.display()
 
     def _launch_challenge(self, b):

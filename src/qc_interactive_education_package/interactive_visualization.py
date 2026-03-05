@@ -612,6 +612,9 @@ class InteractiveViewer:
             outcome_str, sv_collapsed = sv_current.measure(targets)
             from qiskit.circuit.library import UnitaryGate
             import numpy as np
+            import math
+            from fractions import Fraction
+
             measure_gate = UnitaryGate(np.eye(2), label="M")
             measure_gate.name = "M"
             for t in targets:
@@ -619,7 +622,55 @@ class InteractiveViewer:
             self.circuit.initialize(sv_collapsed.data, self.circuit.qubits)
             results = [f"Qubit {t + 1}: {bit}" for t, bit in zip(targets, reversed(outcome_str))]
             self._action_history[-1] = f"{action_desc} 💥 Outcome: [{', '.join(results)}]"
+
+            # Print standard measurement results
+            for res in results:
+                print(res)
+
+            # ==========================================
+            # SHOR'S ALGORITHM INTELLIGENT PARSER
+            # ==========================================
+            # Trigger only if N=8 and the 4 counting qubits are targeted
+            if self.num_qubits == 8 and set(targets_ui) == {1, 2, 3, 4}:
+                # Reconstruct the exact binary string from the Qiskit measurement ordering
+                measured_bin = "".join(reversed(outcome_str))
+                measured_dec = int(measured_bin, 2)
+                phase = measured_dec / 16.0  # 2^4 = 16 basis states in the counting register
+
+                print(f"\n--- 🔍 Shor's Algorithm Analysis (N=15, a=7) ---")
+                print(f"Counting Register Measured: |{measured_bin}⟩ (Decimal: {measured_dec})")
+                print(f"Calculated Phase: {measured_dec} / 16 = {phase}")
+
+                if measured_dec == 0:
+                    print("Result: Trivial phase (0). The period cannot be extracted.")
+                    print("Action: Click 'Undo' and measure again to collapse into a non-trivial eigenstate.")
+                else:
+                    # Apply continued fractions to extract the period (r)
+                    frac = Fraction(phase).limit_denominator(15)
+                    r = frac.denominator
+                    print(f"Continued Fraction: {frac.numerator}/{r}  ➔  Period (r) = {r}")
+
+                    if r % 2 != 0:
+                        print("Result: The extracted period is odd. The arithmetic fails.")
+                        print("Action: Click 'Undo' and measure again.")
+                    else:
+                        a = 7
+                        N = 15
+                        # Calculate factors using the classically efficient gcd operation
+                        factor1 = math.gcd(a ** (r // 2) - 1, N)
+                        factor2 = math.gcd(a ** (r // 2) + 1, N)
+
+                        print(f"Factor 1: gcd({a}^{r // 2} - 1, {N}) = {factor1}")
+                        print(f"Factor 2: gcd({a}^{r // 2} + 1, {N}) = {factor2}")
+
+                        # Validate the extracted factors against the target modulus
+                        if (factor1 * factor2 == N) or (factor1 in [3, 5] and factor2 in [3, 5]):
+                            print("\n🎉 Success! The integer 15 has been successfully factored into 3 and 5.")
+                        else:
+                            print("\nResult: Trivial factors found. Click 'Undo' and measure again.")
+
             self._update_plot()
+
         except Exception as e:
             self._circuit_history.pop()
             self._action_history.pop()
@@ -787,7 +838,8 @@ class InteractiveViewer:
         with self.console:
             self.console.clear_output()
             try:
-                fig = self.circuit.draw(output='mpl')
+                drawable_circ = self._get_drawable_circuit(self.circuit)
+                fig = drawable_circ.draw(output='mpl')
                 buf = BytesIO()
                 with plt.rc_context({'svg.fonttype': 'none'}):
                     fig.savefig(buf, format='svg', bbox_inches='tight')
@@ -824,6 +876,8 @@ class InteractiveViewer:
         return f"|ψ⟩ = {equation}"
 
     def _update_plot(self):
+        self.undo_btn.disabled = not bool(self._circuit_history)
+        self.redo_btn.disabled = not bool(self._redo_circuit_history)
         with self.console:
             try:
                 # ==========================================
@@ -934,7 +988,7 @@ class InteractiveViewer:
                                 return Image.fromarray(arr)
 
                             img_curr_clean = apply_vectorized_ghosting(img_curr, alpha_multiplier=1.0)
-                            img_fut_ghost = apply_vectorized_ghosting(img_fut, alpha_multiplier=0.35)
+                            img_fut_ghost = apply_vectorized_ghosting(img_fut, alpha_multiplier=0.5)
 
                             max_width = max(img_fut_ghost.width, img_curr_clean.width)
                             max_height = max(img_fut_ghost.height, img_curr_clean.height)
@@ -1018,28 +1072,33 @@ class InteractiveViewer:
 
         ipy_display(self.ui)
 
+
 class ChallengeViewer(InteractiveViewer):
     """
     An assessment-driven subclass of InteractiveViewer.
     Evaluates the current state against a defined target state.
+    Can be toggled into a purely comparative 'algorithm' mode.
     """
 
-    def __init__(self, num_qubits, initial_state, target_state, preloaded_circuit=None, show_circuit=True):
-        self.status_banner = widgets.HTML("<h2 style='text-align: center; color: #e74c3c;'>Status: Incomplete ❌</h2>")
+    def __init__(self, num_qubits, initial_state, target_state, preloaded_circuit=None, show_circuit=True,
+                 is_assessment=True):
+        self.is_assessment = is_assessment
+
+        if self.is_assessment:
+            self.status_banner = widgets.HTML(
+                "<h2 style='text-align: center; color: #e74c3c;'>Status: Incomplete ❌</h2>")
 
         shared_layout = widgets.Layout(width='100%', object_fit='contain', justify_content='center')
         self.target_image_widget = widgets.Image(format='png', layout=shared_layout)
         self._raw_target_state = target_state
 
-        # Pass the dynamic 'show_circuit' parameter, not a hardcoded True
+        # Pass the dynamic parameters to the parent class
         super().__init__(
             num_qubits=num_qubits,
             initial_state=initial_state,
             preloaded_circuit=preloaded_circuit,
             show_circuit=show_circuit
         )
-
-        # ... (keep the rest of your ChallengeViewer init code the same) ...
 
         self.image_widget.layout = shared_layout
         self.render_figsize = (5.0, 4.0)
@@ -1048,20 +1107,23 @@ class ChallengeViewer(InteractiveViewer):
         self._render_target()
         self._update_plot()
 
+        # Dynamically assign the column header based on the execution context
+        right_column_header = "Target State" if self.is_assessment else "Final State"
+
         # Force the comparison box to scale with the zoom slider
         self.comparison_box = widgets.HBox([
             # LEFT SIDE: Current State (Strict 50% mathematical partition)
             widgets.VBox(
                 [widgets.HTML(
                     "<h3 style='text-align: center; width: 100%; color: #555; margin-bottom: 0px;'>Current State</h3>"),
-                 self.image_widget],
+                    self.image_widget],
                 layout={'align_items': 'center', 'width': '50%', 'margin': '0px 5px', 'padding': '0px'}),
 
-            # RIGHT SIDE: Target State (Strict 50% mathematical partition)
+            # RIGHT SIDE: Target/Final State (Strict 50% mathematical partition)
             widgets.VBox(
                 [widgets.HTML(
-                    "<h3 style='text-align: center; width: 100%; color: #555; margin-bottom: 0px;'>Target State</h3>"),
-                 self.target_image_widget],
+                    f"<h3 style='text-align: center; width: 100%; color: #555; margin-bottom: 0px;'>{right_column_header}</h3>"),
+                    self.target_image_widget],
                 layout={'align_items': 'center', 'width': '50%', 'margin': '0px 5px', 'padding': '0px'})
 
         ], layout={'width': f"{self.zoom_slider.value}%", 'justify_content': 'center', 'margin': '0px'})
@@ -1079,18 +1141,24 @@ class ChallengeViewer(InteractiveViewer):
             )
         )
 
-        ui_elements = [
-            self.status_banner,
+        # Dynamically construct the DOM payload
+        ui_elements = []
+        if self.is_assessment:
+            ui_elements.append(self.status_banner)
+
+        ui_elements.extend([
             self.controls_header,
             self.controls_top,
             self.controls_bottom,
-            self.visualization_row,  # Replaces the individual widget calls
+            self.visualization_row,
             self.bottom_section,
             self.console
-        ]
+        ])
 
         self.ui = widgets.VBox(ui_elements, layout={'align_items': 'center', 'width': '100%'})
-        self._check_success()
+
+        if self.is_assessment:
+            self._check_success()
 
     def _on_vis_change(self, change):
         """Overrides the parent method to ensure the target state visual updates as well."""
@@ -1131,7 +1199,8 @@ class ChallengeViewer(InteractiveViewer):
 
     def _update_plot(self):
         super()._update_plot()
-        if hasattr(self, 'status_banner'):
+        # Only evaluate fidelity against the target matrix if assessment mode is active
+        if getattr(self, 'is_assessment', False) and hasattr(self, 'status_banner'):
             self._check_success()
 
     def _check_success(self):
