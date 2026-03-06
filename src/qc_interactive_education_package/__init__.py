@@ -9,5 +9,5 @@ from .simulator import Simulator
 from .visualization import Visualization, CircleNotation, DimensionalCircleNotation
 from .dim_Bloch_spheres import SphereNotation
 from .interactive_visualization import InteractiveViewer, ChallengeViewer
-from .launch_viewer import launch_tool, launch_app, launch_challenge, QuantumViewer
+from .launch_viewer import launch_app, QuantumViewer
 from .quantum_library import QuantumCurriculum

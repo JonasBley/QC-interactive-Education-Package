@@ -39,24 +39,37 @@ class InteractiveViewer:
     a live Dirac notation readout, and an optional ghosted circuit diagram.
     """
 
-    def __init__(self, num_qubits=3, initial_state=None, preloaded_circuit=None, show_circuit=True):
-        # Enforce strict maximum of 9 qubits to prevent exponential rendering latency
+    def __init__(self, num_qubits=3, initial_state=None, preloaded_circuit=None, show_circuit=True, show_annotations=False):
         self.num_qubits = min(num_qubits, 9)
         self.show_circuit = show_circuit
+        self.show_annotations = show_annotations
         self.render_figsize = (8.0, 6.0)
 
-        # Persist the preloaded circuit to allow reconstruction upon reset
         self._preloaded_circuit = preloaded_circuit
 
-        # Initialize primary and secondary (redo) tracking arrays
         self._circuit_history = []
         self._action_history = []
         self._redo_circuit_history = []
         self._redo_action_history = []
 
-        # Decoupled LRU Caches to prevent state collisions and RAM overflow
         self._vis_cache = OrderedDict()
         self._circ_cache = OrderedDict()
+
+        # Extract pedagogical annotations if provided in the circuit metadata
+        self._annotations = {}
+        if preloaded_circuit is not None and preloaded_circuit.metadata:
+            self._annotations = preloaded_circuit.metadata.get('annotations', {})
+
+        # The dedicated DOM container for the Explanation/Hint block
+        # Changed from HTML to HTMLMath to natively trigger MathJax typesetting for equations
+        self.annotation_box = widgets.HTMLMath(layout={'width': '100%', 'display': 'none', 'margin': '10px 0px'})
+
+        # Extract initialization vectors if provided via circuit
+        if initial_state is None and preloaded_circuit is not None:
+            for inst in preloaded_circuit.data:
+                if inst.operation.name == 'initialize':
+                    initial_state = list(inst.operation.params)
+                    break
 
         self.initial_state = self._normalize_state(initial_state) if initial_state is not None else None
         self._init_circuit()
@@ -341,6 +354,7 @@ class InteractiveViewer:
             self.controls_header,
             self.controls_top,
             self.controls_bottom,
+            self.annotation_box,  # <--- INJECTED HERE
             self.visualization_row,
             self.bottom_section,
             self.console
@@ -376,6 +390,34 @@ class InteractiveViewer:
         if np.isclose(norm, 0.0): raise ValueError(
             "A null vector cannot be normalized to represent a physical quantum state.")
         return (sv_array / norm).tolist()
+
+    def _parse_markdown(self, text):
+        """
+        A lightweight regex parser to convert basic Markdown to HTML.
+        Leaves $...$ syntax completely untouched for the HTMLMath widget to process.
+        """
+        import re
+        if not text:
+            return ""
+
+        # 1. Bold text: **text**
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+
+        # 2. Italic text: *text*
+        text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+
+        # 3. Inline Code: `code`
+        # We inject custom CSS to make the code block pop beautifully against the dark blue background
+        text = re.sub(
+            r'`(.+?)`',
+            r'<code style="background-color: #0b4382; color: #82ccdd; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 14px;">\1</code>',
+            text
+        )
+
+        # 4. Line breaks
+        text = text.replace('\\n', '<br>').replace('\n', '<br>')
+
+        return text
 
     def _init_circuit(self):
         self.circuit = QuantumCircuit(self.num_qubits)
@@ -955,6 +997,36 @@ class InteractiveViewer:
     def _update_plot(self):
         self.undo_btn.disabled = not bool(self._circuit_history)
         self.redo_btn.disabled = not bool(self._redo_circuit_history)
+
+        # ==========================================
+        # ANNOTATION RENDERER
+        # ==========================================
+        if getattr(self, 'show_annotations', False):
+            step_idx = len(self._circuit_history)
+            annotation_text = self._annotations.get(step_idx, "")
+
+            if annotation_text:
+                is_eval = getattr(self, 'is_assessment', False)
+                title = "Hint" if is_eval else "Explanation"
+                icon = "💡" if is_eval else "📘"
+
+                # INJECTION: Parse the Markdown and preserve MathJax formatting
+                parsed_text = self._parse_markdown(annotation_text)
+
+                # Render the stylized `#042c58` block
+                html = f"""
+                                <div style="background-color: #042c58; color: white; padding: 15px 20px; border-radius: 6px; display: flex; align-items: flex-start; margin: 10px 0px 15px 0px; box-shadow: 0 4px 6px rgba(0,0,0,0.15);">
+                                    <div style="font-size: 24px; margin-right: 15px; margin-top: -2px;">{icon}</div>
+                                    <div style="font-family: sans-serif; font-size: 15px; line-height: 1.5; width: 100%;">
+                                        <b style="color: #f1c40f; font-size: 16px;">{title}:</b> {parsed_text}
+                                    </div>
+                                </div>
+                                """
+                self.annotation_box.value = html
+                self.annotation_box.layout.display = 'block'
+            else:
+                self.annotation_box.layout.display = 'none'
+
         with self.console:
             try:
                 # ==========================================
@@ -1159,14 +1231,9 @@ class ChallengeViewer(InteractiveViewer):
     """
 
     def __init__(self, num_qubits, initial_state=None, target_state=None, preloaded_circuit=None, show_circuit=True,
-                 is_assessment=True):
+                 show_annotations=False, is_assessment=True):
         self.is_assessment = is_assessment
 
-        # ==========================================
-        # DYNAMIC STATE RESOLUTION PIPELINE
-        # ==========================================
-
-        # 1. Architecturally resolve the initial state
         # ==========================================
         # DYNAMIC STATE RESOLUTION PIPELINE
         # ==========================================
@@ -1218,7 +1285,8 @@ class ChallengeViewer(InteractiveViewer):
             num_qubits=num_qubits,
             initial_state=initial_state,
             preloaded_circuit=preloaded_circuit,
-            show_circuit=show_circuit
+            show_circuit=show_circuit,
+            show_annotations=show_annotations  # <--- PASSED TO PARENT
         )
 
         self.image_widget.layout = shared_layout
@@ -1271,6 +1339,7 @@ class ChallengeViewer(InteractiveViewer):
             self.controls_header,
             self.controls_top,
             self.controls_bottom,
+            self.annotation_box,
             self.visualization_row,
             self.bottom_section,
             self.console

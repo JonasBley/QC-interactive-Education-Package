@@ -3,12 +3,24 @@ from qiskit import QuantumCircuit
 from qiskit.circuit.library import QFTGate, grover_operator
 from qiskit.quantum_info import Statevector, random_statevector
 
+
 class QuantumCurriculum:
     """
-    A native Python constructor for the quantum education suite.
-    Bypasses serialization to preserve modern Qiskit architectures,
-    including advanced phase gates and custom instructions.
+    A native Python constructor for the Quantum Viewer.
     """
+
+    @staticmethod
+    def annotate(qc, step_index, text):
+        """
+        Attaches a pedagogical annotation to a specific mathematical step in the timeline.
+        Step 0 = Initial State. Step 1 = After the first gate operation, etc.
+        """
+        if qc.metadata is None:
+            qc.metadata = {}
+        if 'annotations' not in qc.metadata:
+            qc.metadata['annotations'] = {}
+        qc.metadata['annotations'][step_index] = text
+        return qc
 
     @staticmethod
     def get_algorithms():
@@ -18,6 +30,13 @@ class QuantumCurriculum:
         qc_bell = QuantumCircuit(2)
         qc_bell.h(0)
         qc_bell.cx(0, 1)
+
+        QuantumCurriculum.annotate(qc_bell, 0,
+                                   "We start in the absolute ground state $|00\\rangle$. Both qubits possess deterministic, classical values.")
+        QuantumCurriculum.annotate(qc_bell, 1,
+                                   "The **Hadamard** gate (`HGate`) on $q_0$ creates a perfect superposition. The system is now separated into two equal branches: $\\frac{|00\\rangle + |01\\rangle}{\\sqrt{2}}$.")
+        QuantumCurriculum.annotate(qc_bell, 2,
+                                   "The **CNOT** gate permanently entangles the qubits. Notice how the amplitudes have shifted into the mathematically inseparable Bell State: $| \\Phi^+ \\rangle = \\frac{|00\\rangle + |11\\rangle}{\\sqrt{2}}$.")
         algos["Bell State Entanglement"] = qc_bell
 
         # --- Algorithm 2: GHZ State ---
@@ -25,12 +44,38 @@ class QuantumCurriculum:
         qc_ghz.h(0)
         qc_ghz.cx(0, 1)
         qc_ghz.cx(1, 2)
+
+        QuantumCurriculum.annotate(qc_ghz, 0, "We begin in the $|000\\rangle$ ground state.")
+        QuantumCurriculum.annotate(qc_ghz, 1,
+                                   "The **Hadamard** gate places the first qubit into a superposition, yielding $\\frac{|000\\rangle + |001\\rangle}{\\sqrt{2}}$.")
+        QuantumCurriculum.annotate(qc_ghz, 2,
+                                   "The first **CNOT** entangles $q_0$ and $q_1$. We now have a bipartite entangled pair tensored with a deterministic $q_2$.")
+        QuantumCurriculum.annotate(qc_ghz, 3,
+                                   "The second **CNOT** cascades the entanglement to $q_2$. We have successfully generated the maximally entangled tripartite **GHZ State**: $\\frac{|000\\rangle + |111\\rangle}{\\sqrt{2}}$.")
         algos["GHZ State Entanglement"] = qc_ghz
 
         # --- Algorithm 3: Quantum Fourier Transform ---
+        # Replaced the opaque QFTGate with the explicit pedagogical sequence
         qc_qft = QuantumCircuit(3)
-        qc_qft.append(QFTGate(3), [0, 1, 2])
-        algos["Quantum Fourier Transform (3Q)"] = qc_qft.decompose()
+        qc_qft.h(2)
+        qc_qft.cp(np.pi / 2, 1, 2)
+        qc_qft.cp(np.pi / 4, 0, 2)
+        qc_qft.h(1)
+        qc_qft.cp(np.pi / 2, 0, 1)
+        qc_qft.h(0)
+        qc_qft.swap(0, 2)
+
+        QuantumCurriculum.annotate(qc_qft, 0,
+                                   "We initialize the Quantum Fourier Transform (QFT). The QFT maps the computational basis into the Fourier (phase) basis.")
+        QuantumCurriculum.annotate(qc_qft, 1,
+                                   "A **Hadamard** on the Most Significant Bit (MSB, $q_2$) begins the phase fractionalization.")
+        QuantumCurriculum.annotate(qc_qft, 2,
+                                   "A Controlled-Phase gate ($\pi/2$) applies a fractional kickback conditional on $q_1$.")
+        QuantumCurriculum.annotate(qc_qft, 3,
+                                   "A Controlled-Phase gate ($\pi/4$) applies a finer fractional kickback conditional on $q_0$. The MSB is now fully encoded in the Fourier basis.")
+        QuantumCurriculum.annotate(qc_qft, 7,
+                                   "Finally, the **SWAP** gate reverses the qubit ordering to mathematically align the output with standard Qiskit little-endian notation.")
+        algos["Quantum Fourier Transform (3Q)"] = qc_qft
 
         # ==========================================
         # GROVER'S SEARCH DYNAMIC BUILDER
@@ -39,27 +84,27 @@ class QuantumCurriculum:
             n = len(target_bitstring)
             qc = QuantumCircuit(n)
 
+            QuantumCurriculum.annotate(qc, 0, "Grover's Search begins in the absolute ground state $|0...0\\rangle$.")
+
             # 1. Initialize uniform superposition
             qc.h(range(n))
+            QuantumCurriculum.annotate(qc, 1,
+                                       "We apply **Hadamard** gates to all qubits, spreading the amplitude evenly across all $2^n$ basis states to create a uniform superposition.")
 
             # 2. Construct the strict single-state Oracle
             oracle = QuantumCircuit(n, name="Oracle")
-            # Qiskit uses little-endian ordering (rightmost bit is q_0)
             for i, bit in enumerate(reversed(target_bitstring)):
                 if bit == '0':
                     oracle.x(i)
 
-            # Apply Multi-Controlled Phase Flip (MCZ) via Phase Kickback
             oracle.h(n - 1)
             oracle.mcx(list(range(n - 1)), n - 1)
             oracle.h(n - 1)
 
-            # Uncompute the boundary X gates
             for i, bit in enumerate(reversed(target_bitstring)):
                 if bit == '0':
                     oracle.x(i)
 
-            # Encapsulate into a single atomic operation for the timeline
             oracle_gate = oracle.to_gate(label="Oracle")
 
             # 3. Construct the Diffuser (Inversion about the mean)
@@ -72,36 +117,58 @@ class QuantumCurriculum:
             diffuser.x(range(n))
             diffuser.h(range(n))
 
-            # Encapsulate into a single atomic operation for the timeline
             diffuser_gate = diffuser.to_gate(label="Diffuser")
 
             import numpy as np
             optimal_iterations = int(np.floor((np.pi / 4.0) * np.sqrt(2 ** n)))
 
-            for _ in range(optimal_iterations):
+            step_counter = 2
+            for i in range(optimal_iterations):
                 qc.append(oracle_gate, range(n))
+                QuantumCurriculum.annotate(qc, step_counter,
+                                           f"Iteration {i + 1}: The **Oracle** isolates the target string $|{target_bitstring}\\rangle$ and applies a geometric reflection, flipping its phase (amplitude) to negative.")
+                step_counter += 1
+
                 qc.append(diffuser_gate, range(n))
+                QuantumCurriculum.annotate(qc, step_counter,
+                                           f"Iteration {i + 1}: The **Diffuser** performs an inversion about the mean. Notice how this geometrically drains the amplitude from the uniform states and physically amplifies the target state.")
+                step_counter += 1
 
             return qc
 
-        # --- Algorithm 4 & 5: Grover's Search (Scaled) ---
         algos["Grover's Search: Target |1011⟩ (4Q)"] = build_grover("1011")
         algos["Grover's Search: Target |10101⟩ (5Q)"] = build_grover("10101")
 
         # --- Algorithm 6: 3-Qubit Bit-Flip Error Correction ---
         qc_3q_err = QuantumCircuit(3)
+        QuantumCurriculum.annotate(qc_3q_err, 0,
+                                   "We start in the $|000\\rangle$ ground state. The objective is to encode a single logical qubit across three physical qubits to protect against a bit-flip error.")
         qc_3q_err.x(0)
+        QuantumCurriculum.annotate(qc_3q_err, 1,
+                                   "We initialize $q_0$ to the state $|1\\rangle$. This is the raw logical state we wish to protect.")
         qc_3q_err.cx(0, 1)
         qc_3q_err.cx(0, 2)
+        QuantumCurriculum.annotate(qc_3q_err, 3,
+                                   "Encoding complete. By cascading CNOT gates, we have mapped the logical state into the physical repetition code $|111\\rangle$.")
         qc_3q_err.x(0)
+        QuantumCurriculum.annotate(qc_3q_err, 4,
+                                   "⚠️ **ERROR INJECTED:** A quantum noise event (X-gate) strikes $q_0$, flipping it back to $|0\\rangle$. The system is now corrupted into the state $|011\\rangle$.")
         qc_3q_err.cx(0, 1)
         qc_3q_err.cx(0, 2)
+        QuantumCurriculum.annotate(qc_3q_err, 6,
+                                   "Syndrome Measurement: We compute the parity of the qubits using CNOTs. This maps the error syndrome into the ancilla space without collapsing the logical superposition.")
         qc_3q_err.ccx(1, 2, 0)
+        QuantumCurriculum.annotate(qc_3q_err, 7,
+                                   "Correction: The Toffoli (CCX) gate acts as an autonomous classical logic switch, flipping $q_0$ back to its correct state exclusively if the syndrome flags an error. The state is restored to $|111\\rangle$.")
         algos["Error Correction: 3-Qubit Bit-Flip"] = qc_3q_err
 
         # --- Algorithm 7: 7-Qubit Steane Code (Logical |0>) ---
         qc_steane = QuantumCircuit(7)
+        QuantumCurriculum.annotate(qc_steane, 0,
+                                   "We initialize the Steane [[7,1,3]] Error Correction code. This CSS code can simultaneously correct both bit-flip (X) and phase-flip (Z) errors.")
         qc_steane.h([0, 1, 2])
+        QuantumCurriculum.annotate(qc_steane, 1,
+                                   "Hadamard gates prepare the three data qubits into a uniform superposition.")
         qc_steane.cx(0, 3);
         qc_steane.cx(1, 3);
         qc_steane.cx(0, 4)
@@ -111,17 +178,25 @@ class QuantumCurriculum:
         qc_steane.cx(0, 6);
         qc_steane.cx(1, 6);
         qc_steane.cx(2, 6)
+        QuantumCurriculum.annotate(qc_steane, 10,
+                                   "A highly specific array of parity operations encodes the logical $|0\\rangle_L$ state into the 7 physical qubits using the classical Hamming code topology.")
         algos["Error Correction: Steane [[7,1,3]] Code"] = qc_steane
 
         # --- Algorithm 8: Shor's Period Finding (a=2, N=3) ---
         qc_shor = QuantumCircuit(4)
+        QuantumCurriculum.annotate(qc_shor, 0,
+                                   "We initialize a 4-qubit Shor's algorithm. Qubits 0-1 serve as the counting register, and Qubits 2-3 are the auxiliary work register.")
         qc_shor.h([0, 1])
         qc_shor.x(3)
+        QuantumCurriculum.annotate(qc_shor, 2,
+                                   "We prepare the counting register in a uniform superposition and excite the auxiliary register to $|1\\rangle$ (the multiplicative identity).")
         qc_shor.cswap(0, 2, 3)
         qc_shor.swap(0, 1)
         qc_shor.h(1)
-        qc_shor.cp(-1*np.pi / 2, 0, 1)
+        qc_shor.cp(-1 * np.pi / 2, 0, 1)
         qc_shor.h(0)
+        QuantumCurriculum.annotate(qc_shor, 7,
+                                   "After executing the modular exponentiation and the Inverse QFT, the counting register collapses into the periodic phase shift, revealing the mathematical period of the function.")
         algos["Shor's Algorithm: Period Finding"] = qc_shor
 
         # ==========================================
@@ -130,47 +205,43 @@ class QuantumCurriculum:
         qc_shor_6q = QuantumCircuit(6)
         n_count = 3
 
-        # Step 1: Initialize Superposition & Eigenstate
         prep = QuantumCircuit(6, name="Initialize")
         for q in range(n_count):
             prep.h(q)
-
-        # Initialize auxiliary register to |1> (Least Significant Bit of the aux register)
         prep.x(n_count)
+
         qc_shor_6q.append(prep.to_gate(label="Initialization"), range(6))
+        QuantumCurriculum.annotate(qc_shor_6q, 0,
+                                   "We initialize the counting register in a uniform superposition and set the auxiliary work register to the multiplicative identity $|1\\rangle$ (Decimal 1).")
 
-        # Step 2: Sequential Modular Exponentiation
-        # For N=6, we need 3 work qubits.
-        # We use a pure permutation matrix for x -> 5x mod 6 to guarantee mathematical perfection.
         from qiskit.circuit.library import UnitaryGate
-
         U_matrix = np.eye(8)
-        # Map 1 to 5 and 5 to 1
         U_matrix[1, 1] = 0;
         U_matrix[1, 5] = 1
         U_matrix[5, 5] = 0;
         U_matrix[5, 1] = 1
-        # Map 2 to 4 and 4 to 2
         U_matrix[2, 2] = 0;
         U_matrix[2, 4] = 1
         U_matrix[4, 4] = 0;
         U_matrix[4, 2] = 1
-        # States 0, 3, 6, and 7 mathematically remain unchanged
 
         U_gate = UnitaryGate(U_matrix, label="5^1 mod 6").control(1)
-
-        # The period of 5 mod 6 is 2. Therefore, U^2 and U^4 perfectly collapse to the Identity matrix.
         U_identity = UnitaryGate(np.eye(8), label="5^2 mod 6 (Identity)").control(1)
         U_identity2 = UnitaryGate(np.eye(8), label="5^4 mod 6 (Identity)").control(1)
 
-        # Append each modular exponentiation step directly to the timeline
         qc_shor_6q.append(U_gate, [0, 3, 4, 5])
-        qc_shor_6q.append(U_identity, [1, 3, 4, 5])
-        qc_shor_6q.append(U_identity2, [2, 3, 4, 5])
+        QuantumCurriculum.annotate(qc_shor_6q, 1,
+                                   "We apply $5^1 \\bmod 6$. This unitary rotation mathematically shifts the amplitudes and accumulates a phase in the counting register via Phase Kickback.")
 
-        # Step 3: Inverse Quantum Fourier Transform
+        qc_shor_6q.append(U_identity, [1, 3, 4, 5])
+        QuantumCurriculum.annotate(qc_shor_6q, 2,
+                                   "We apply $5^2 \\bmod 6$. Because $5^2 = 25 \\equiv 1 \\bmod 6$, this operator trivially collapses to the Identity matrix. No amplitude shift occurs.")
+
+        qc_shor_6q.append(U_identity2, [2, 3, 4, 5])
+        QuantumCurriculum.annotate(qc_shor_6q, 3,
+                                   "We apply $5^4 \\bmod 6$. This also evaluates to Identity. The early saturation of these higher-order exponentiations explicitly proves the period is $r=2$.")
+
         def qft_dagger(n):
-            """n-qubit QFTdagger on the first n qubits"""
             qc = QuantumCircuit(n, name="QFT†")
             for qubit in range(n // 2):
                 qc.swap(qubit, n - qubit - 1)
@@ -181,6 +252,8 @@ class QuantumCurriculum:
             return qc.to_gate(label="Inverse QFT")
 
         qc_shor_6q.append(qft_dagger(n_count), range(n_count))
+        QuantumCurriculum.annotate(qc_shor_6q, 4,
+                                   "The **Inverse Quantum Fourier Transform** perfectly resolves the accumulated kickback phases, collapsing the counting register exclusively into the fraction periods $0$ and $4$. ($4/8 = 1/2$, yielding period $r=2$).")
 
         algos["Shor's Algorithm: Period Finding (a=5, N=6)"] = qc_shor_6q
 
@@ -191,61 +264,47 @@ class QuantumCurriculum:
         n_count = 4
         a = 7
 
-        # Step 1: Initialize Superposition & Eigenstate
         prep = QuantumCircuit(8, name="Initialize")
         for q in range(n_count):
             prep.h(q)
-
-        # Initialize auxiliary register to |1> (Least Significant Bit of the aux register)
         prep.x(n_count)
-        qc_shor_8q.append(prep.to_gate(label="Initialization"), range(8))
 
-        # Step 2: Sequential Modular Exponentiation
+        qc_shor_8q.append(prep.to_gate(label="Initialization"), range(8))
+        QuantumCurriculum.annotate(qc_shor_8q, 0,
+                                   "We initialize the 8Q Shor algorithm. The 4-qubit counting register is placed into uniform superposition, and the auxiliary register is excited to $|1\\rangle$.")
+
         def c_amod15(base, power):
-            """Controlled multiplication by a mod 15"""
             if base not in [2, 4, 7, 8, 11, 13]:
                 raise ValueError("'base' must be 2,4,7,8,11 or 13")
             U = QuantumCircuit(4)
             for _ in range(power):
                 if base in [2, 13]:
-                    U.swap(0, 1)
-                    U.swap(1, 2)
+                    U.swap(0, 1);
+                    U.swap(1, 2);
                     U.swap(2, 3)
                 if base in [7, 8]:
-                    U.swap(2, 3)
-                    U.swap(1, 2)
+                    U.swap(2, 3);
+                    U.swap(1, 2);
                     U.swap(0, 1)
                 if base in [4, 11]:
-                    U.swap(1, 3)
+                    U.swap(1, 3);
                     U.swap(0, 2)
                 if base in [7, 11, 13]:
                     for q in range(4):
                         U.x(q)
-
             U_gate = U.to_gate()
             U_gate.name = f"{base}^{power} mod 15"
             return U_gate.control(1)
 
-        # Append each modular exponentiation step directly to the timeline
         for q in range(n_count):
-            qc_shor_8q.append(
-                c_amod15(a, 2 ** q),
-                [q] + [i + n_count for i in range(4)]
-            )
+            qc_shor_8q.append(c_amod15(a, 2 ** q), [q] + [i + n_count for i in range(4)])
 
-        # Step 3: Inverse Quantum Fourier Transform
-        def qft_dagger(n):
-            """n-qubit QFTdagger on the first n qubits"""
-            qc = QuantumCircuit(n, name="QFT†")
-            for qubit in range(n // 2):
-                qc.swap(qubit, n - qubit - 1)
-            for j in range(n):
-                for m in range(j):
-                    qc.cp(-np.pi / float(2 ** (j - m)), m, j)
-                qc.h(j)
-            return qc.to_gate(label="Inverse QFT")
+        QuantumCurriculum.annotate(qc_shor_8q, 4,
+                                   "We have completed the sequential modular exponentiation. Notice the highly complex entanglement topology mapping between the counting and work registers.")
 
         qc_shor_8q.append(qft_dagger(n_count), range(n_count))
+        QuantumCurriculum.annotate(qc_shor_8q, 5,
+                                   "The **Inverse QFT** isolates the periodic interference patterns. Measuring the counting register now yields one of the exact eigenvalues required to extract the period classically.")
 
         algos["Shor's Algorithm: Factor 15 (8Q)"] = qc_shor_8q
 
@@ -256,16 +315,26 @@ class QuantumCurriculum:
         challenges = {}
         inv_sq2 = 1.0 / np.sqrt(2)
 
+        # Helper method to generate purely pedagogical hint circuits
+        def make_hint(num_qubits, text):
+            qc_hint = QuantumCircuit(num_qubits)
+            QuantumCurriculum.annotate(qc_hint, 0, text)
+            return qc_hint
+
         challenges["Level 1: Create a Superposition (|+⟩)"] = {
             "num_qubits": 1,
             "initial_state": [1.0, 0.0],
-            "target_state": [inv_sq2, inv_sq2]
+            "target_state": [inv_sq2, inv_sq2],
+            "preloaded_circuit": make_hint(1,
+                                           "To map a deterministic classical state into a uniform superposition, apply a **Hadamard** (`H`) gate.")
         }
 
         challenges["Level 2: Phase Flip (|1⟩ to |-⟩)"] = {
             "num_qubits": 1,
             "initial_state": [0.0, 1.0],
-            "target_state": [inv_sq2, -inv_sq2]
+            "target_state": [inv_sq2, -inv_sq2],
+            "preloaded_circuit": make_hint(1,
+                                           "You are starting in the $|1\\rangle$ state. Applying a Hadamard gate to $|1\\rangle$ will yield the targeted negative phase superposition automatically.")
         }
 
         qc_bell = QuantumCircuit(2)
@@ -274,7 +343,9 @@ class QuantumCurriculum:
         challenges["Level 3: Construct a Bell State"] = {
             "num_qubits": 2,
             "initial_state": [1.0, 0.0, 0.0, 0.0],
-            "target_state": Statevector.from_instruction(qc_bell).data.tolist()
+            "target_state": Statevector.from_instruction(qc_bell).data.tolist(),
+            "preloaded_circuit": make_hint(2,
+                                           "Entanglement requires two steps: First, create a superposition on $q_0$ using an `H` gate. Then, correlate $q_1$ to $q_0$ using a Controlled-NOT (`CX`) gate.")
         }
 
         qc_ghz = QuantumCircuit(3)
@@ -284,37 +355,43 @@ class QuantumCurriculum:
         challenges["Level 4: Construct a GHZ state"] = {
             "num_qubits": 3,
             "initial_state": [1.0] + [0.0] * 7,
-            "target_state": Statevector.from_instruction(qc_ghz).data.tolist()
+            "target_state": Statevector.from_instruction(qc_ghz).data.tolist(),
+            "preloaded_circuit": make_hint(3,
+                                           "To build a tripartite GHZ state, first construct a standard Bell State between $q_0$ and $q_1$, and then cascade a second `CX` gate from $q_1$ to $q_2$.")
         }
 
         challenges["Level 5: Quantum Teleportation"] = {
             "num_qubits": 3,
             "initial_state": [inv_sq2, -inv_sq2, 0.0, 0.0, 0.0, 0.0, inv_sq2, -inv_sq2],
-            "target_state": [inv_sq2, -inv_sq2, inv_sq2, -inv_sq2, -inv_sq2, inv_sq2, inv_sq2, -inv_sq2]
+            "target_state": [inv_sq2, -inv_sq2, inv_sq2, -inv_sq2, -inv_sq2, inv_sq2, inv_sq2, -inv_sq2],
+            "preloaded_circuit": make_hint(3,
+                                           "You must bind Bob ($q_2$) to Alice ($q_1$) using a Bell State, then mathematically fuse Alice's random state ($q_0$) into the Bell pair using `CX` and `H` gates. Finally, resolve the deferred measurements with `CX` ($q_1\\rightarrow q_2$) and `CZ` ($q_0\\rightarrow q_2$).")
         }
 
         challenges["Level 6: Search Challenge: Amplify |101⟩"] = {
             "num_qubits": 3,
             "initial_state": [1.0] + [0.0] * 7,
-            "target_state": [0.0, 0.0, 0.0, 0.0, 0.0, inv_sq2, 0.0, inv_sq2]
+            "target_state": [0.0, 0.0, 0.0, 0.0, 0.0, inv_sq2, 0.0, inv_sq2],
+            "preloaded_circuit": make_hint(3,
+                                           "To amplify $|101\\rangle$, you must construct an Oracle that isolates the target using $X$-gates on the zero-bits, and phase-flips it using a Multi-Controlled Z-gate. (For a 3-qubit challenge, standard `H` gates and `CCX` work perfectly).")
         }
 
         # --- Phase-Flip Error Correction ---
-        # 1. Define the pristine target: Logical |1> encoded into the phase basis (|--->)
         qc_phase_target = QuantumCircuit(3)
         qc_phase_target.x(0)
         qc_phase_target.cx(0, 1)
         qc_phase_target.cx(0, 2)
         qc_phase_target.h([0, 1, 2])
 
-        # 2. Define the corrupted initial state: A Z-error strikes Qubit 1 (index 0)
         qc_phase_init = qc_phase_target.copy()
         qc_phase_init.z(0)
 
         challenges["Level 7: Correct a Phase-Flip Error"] = {
             "num_qubits": 3,
             "initial_state": Statevector.from_instruction(qc_phase_init).data.tolist(),
-            "target_state": Statevector.from_instruction(qc_phase_target).data.tolist()
+            "target_state": Statevector.from_instruction(qc_phase_target).data.tolist(),
+            "preloaded_circuit": make_hint(3,
+                                           "The system is currently corrupted by a $Z$-error. Because Phase ($Z$) errors become Bit ($X$) errors when rotated into the Hadamard basis, you must sandwich your standard Repetition Code syndrome measurement (`CX`, `CCX`) between two arrays of `H` gates.")
         }
 
         return challenges
