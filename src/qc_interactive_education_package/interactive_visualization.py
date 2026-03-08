@@ -91,7 +91,7 @@ class InteractiveViewer:
         )
 
         # Dynamic Qubit Selector for Bloch Spheres
-        bloch_options = list(range(1, min(self.num_qubits, 3) + 1))
+        bloch_options = list(range(1, self.num_qubits + 1))
         self.bloch_qubit_dropdown = widgets.Dropdown(
             options=bloch_options,
             value=1,
@@ -541,7 +541,7 @@ class InteractiveViewer:
 
         self.controlled_checkbox.disabled = (self.num_qubits < 2)
 
-        bloch_options = list(range(1, min(self.num_qubits, 3) + 1))
+        bloch_options = list(range(1, self.num_qubits + 1))
         if self.bloch_qubit_dropdown.value not in bloch_options:
             self.bloch_qubit_dropdown.value = 1
         self.bloch_qubit_dropdown.options = bloch_options

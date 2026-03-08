@@ -1,16 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-# import matplotlib.colors as colors
 from matplotlib.colors import ListedColormap
-# import matplotlib.cm as cm
 import hsluv
 
 from qc_interactive_education_package import Simulator, Visualization
 
+
 class BlochSphere:
     def __init__(self,
                  bloch_radius=0.8,
-                 rotation_angle=0,  # Used for inner sphere color mapping (phase).
+                 rotation_angle=0,
                  vector_theta=0,
                  vector_phi=0,
                  outer_radius=1,
@@ -25,8 +24,7 @@ class BlochSphere:
         self.outer_radius = outer_radius
         self.rotation_axis = rotation_axis
 
-
-    def plot(self, ax=None, figsize=(6, 6), offset=(0, 0, 0)):
+    def plot(self, ax=None, figsize=(6, 6), offset=(0, 0, 0), fontsize=10):
         """
         Plot the Bloch sphere with everything rotated 90° clockwise about z.
         """
@@ -53,11 +51,31 @@ class BlochSphere:
             color='gray', alpha=0.05, edgecolor='none'
         )
 
+        # --- Draw Equators for 3D depth perception ---
+        u_eq = np.linspace(0, 2 * np.pi, 100)
+
+        # 1. X-Y Plane Equator (rotated)
+        x_eq_xy = self.outer_radius * np.sin(u_eq)
+        y_eq_xy = -self.outer_radius * np.cos(u_eq)
+        ax.plot(
+            x_eq_xy + dx, y_eq_xy + dy, np.zeros_like(u_eq) + dz,
+            color='gray', linestyle='-', alpha=0.5, linewidth=0.5
+        )
+
+        # 2. X-Z Plane Equator (rotated: x=0, y=-x_original)
+        x_eq_xz = np.zeros_like(u_eq)
+        y_eq_xz = -self.outer_radius * np.cos(u_eq)
+        z_eq_xz = self.outer_radius * np.sin(u_eq)
+        ax.plot(
+            x_eq_xz + dx, y_eq_xz + dy, z_eq_xz + dz,
+            color='gray', linestyle='-', alpha=0.5, linewidth=0.5
+        )
+
         if self.bloch_radius > 1e-3:
-            # --- Internal Bloch vector ---
-            x_raw = self.bloch_radius * np.sin(self.vector_theta) * np.cos(self.vector_phi)
-            y_raw = self.bloch_radius * np.sin(self.vector_theta) * np.sin(self.vector_phi)
-            z_vec = self.bloch_radius * np.cos(self.vector_theta)
+            # --- Internal Bloch vector (Fixed to outer_radius) ---
+            x_raw = self.outer_radius * np.sin(self.vector_theta) * np.cos(self.vector_phi)
+            y_raw = self.outer_radius * np.sin(self.vector_theta) * np.sin(self.vector_phi)
+            z_vec = self.outer_radius * np.cos(self.vector_theta)
 
             # Rotate the vector too: (x, y) -> (y, -x)
             x_vec, y_vec = y_raw, -x_raw
@@ -69,27 +87,34 @@ class BlochSphere:
                 [0, 0, self.outer_radius]
             ])
 
-
-
             # Draw X, Y, Z axes (rotated)
             rot_axes = np.array([[ay, -ax, az] for ax, ay, az in axes])
+            axis_labels = ['x', 'y', 'z']
 
-            for vec in rot_axes:
+            for vec, label in zip(rot_axes, axis_labels):
                 ax.quiver(
                     dx, dy, dz,
                     vec[0], vec[1], vec[2],
-                    color='black', arrow_length_ratio=0.1, alpha=0.5
+                    color='gray', arrow_length_ratio=0.15, alpha=0.6, linewidth=1
+                )
+                ax.text(
+                    dx + vec[0] * 1.15, dy + vec[1] * 1.15, dz + vec[2] * 1.15,
+                    label, color='gray', fontsize=fontsize,
+                    ha='center', va='center'
                 )
 
             # Draw the Bloch vector
             ax.quiver(
                 dx, dy, dz,
                 x_vec, y_vec, z_vec,
-                color='#e31b4c', arrow_length_ratio=0.1, linewidth=2
+                color='#e31b4c', arrow_length_ratio=0.15, linewidth=1.5
             )
+
+            # Dynamic vector label
             ax.text(
-                dx + 1.05 * x_vec, dy + 1.05 * y_vec, dz + 1.05 * z_vec,
-                'v', color='#e31b4c', fontsize=12
+                dx + 1.15 * x_vec, dy + 1.15 * y_vec, dz + 1.15 * z_vec,
+                r'$v$', color='#e31b4c', fontsize=fontsize,
+                ha='left', va='bottom', fontweight='bold'
             )
 
             # --- Inner sphere (high zorder, transparent) ---
@@ -101,13 +126,8 @@ class BlochSphere:
             x_inner, y_inner = y_inner, -x_inner
 
             # --- HUSL COLOR MAPPING LOGIC ---
-            # 1. Normalize angle to degrees [0, 360]
-            #    We use the offset +5*pi/4 per your original logic to match alignment
             phase_radians = (self.rotation_angle + 5 * np.pi / 4) % (2 * np.pi)
             degrees = np.degrees(phase_radians)
-
-            # 2. Convert HUSL to Hex
-            #    H = degrees, S = 100 (saturation), L = 50 (lightness)
             inner_color = hsluv.hsluv_to_hex([degrees, 100, 50])
 
             ax.plot_surface(
@@ -117,48 +137,22 @@ class BlochSphere:
 
         # Keep aspect ratio equal
         ax.set_box_aspect([1, 1, 1])
-        ax.axis('off')  # Clean up axes if preferred
+        ax.axis('off')
 
         return ax
 
+
 def normalize_vector(v):
-    """
-    Normalize a complex vector so that the sum of the squared absolute values equals 1.
-
-    Parameters:
-        v (array-like): Input vector (can be a list or a NumPy array) with complex entries.
-
-    Returns:
-        np.ndarray: Normalized vector.
-
-    Raises:
-        ValueError: If the input vector is the zero vector.
-    """
-    # Convert the input to a NumPy array if it isn't already
     v = np.array(v, dtype=complex)
-
-    # Compute the norm: sqrt(sum(|v_i|^2))
     norm = np.sqrt(np.sum(np.abs(v) ** 2))
-
     if norm == 0:
         return v, norm
-
     return (v / norm, norm)
 
+
 class SphereNotation(Visualization):
-    """A Visualization subclass for the Dimensional Circle
-    Notation (DCN) representation.
-    """
-
     def __init__(self, simulator, select_qubit=1, parse_math=True, version=2):
-        """Constructor for the Dimensional Circle Notation
-        representation.
-
-        Args:
-            simulator (qc_simulator.simulator): Simulator object to be
-            visualized.
-        """
-        super().__init__(simulator)  # Execute constructor of superclass
+        super().__init__(simulator)
 
         print(f"Setting up DCN Visualization in version {version}.")
 
@@ -176,14 +170,12 @@ class SphereNotation(Visualization):
             'width_textwidth': .1,
             'offset_registerLabel': 1.3,
             'offset_registerValues': .6,
-            # Set default text sizes for visualization
             'textsize_register': 10 * 0.7 ** ((self._sim._n - 3) // 2),
             'textsize_magphase': 8 * 0.7 ** ((self._sim._n - 3) // 2),
             'textsize_axislbl': 10 * 0.7 ** ((self._sim._n - 3) // 2),
             'bloch_outer_radius': 1
         })
 
-        # Set default arrow style
         self._arrowStyle = {
             "width": 0.03 * 0.7 ** ((self._sim._n - 3) // 2),
             "head_width": 0.2 * 0.7 ** ((self._sim._n - 3) // 2),
@@ -191,7 +183,6 @@ class SphereNotation(Visualization):
             "edgecolor": None,
             "facecolor": 'black',
         }
-        # Set default text style
         self._textStyle = {
             "size": self._params["textsize_register"],
             "horizontalalignment": "center",
@@ -203,7 +194,6 @@ class SphereNotation(Visualization):
             "linestyle": "solid",
             "zorder": 0.7 ** ((self._sim._n - 3) // 2),
         }
-        # Create empty variables for later use
         self.fig = None
         self._ax = None
         self._val, self._phi = None, None
@@ -211,70 +201,39 @@ class SphereNotation(Visualization):
         self.select_qubit = select_qubit
         self._lx, self._ly = None, None
 
-        # --- PREPARE HUSL COLORMAP ---
-        # We generate a list of RGB values for hues 0 to 360.
-        # We use 256 steps for smoothness.
-        # Saturation=100, Lightness=50 gives the standard vibrant HUSL look.
-        self.husl_cmap = ListedColormap([hsluv.hsluv_to_rgb([h, 100, 50]) for h in np.linspace(0, 360, 256)], name='husl_phase')
+        self.husl_cmap = ListedColormap([hsluv.hsluv_to_rgb([h, 100, 50]) for h in np.linspace(0, 360, 256)],
+                                        name='husl_phase')
 
     def draw(self):
-        """Draw Dimensional Circle Notation representation of current
-        simulator state.
-        """
-        # Setup pyplot figure
         self.fig = plt.figure(layout="compressed")
-        plt.get_current_fig_manager().set_window_title(
-            "Dimensional Bloch spheres"
-        )
+        plt.get_current_fig_manager().set_window_title("Dimensional Bloch spheres")
         self._ax = self.fig.gca()
-
         self._ax.set_aspect("equal")
-        # Get arrays with magnitude and phase of the register
+
         self._val = np.abs(self._sim._register)
         self._phi = -np.angle(self._sim._register, deg=False).flatten()
-        # Get x, y components of the phase for drawing phase dial inside
-        # circles
         self._lx, self._ly = np.sin(self._phi), np.cos(self._phi)
+        self._axis_labels = np.arange(1, self._sim._n + 1)[:: self._params["bitOrder"]]
 
-        # Explicit positions for the qubits do not specify the bit-order
-        # Bitorder can be changed by flipping the value, phase, label arrays
-        self._axis_labels = np.arange(
-            1, self._sim._n + 1)[:: self._params["bitOrder"]]
-
-        # self._sim._n is amount of Qubits.
         amount_qubits = self._sim._n
-        # select qubit to extract
         select_qubit = self.select_qubit
         register_as_vector = self._sim._register.flatten()
-        # set distance
         d = 3.5
 
-        # Get arrays with magnitude and phase of the register
-        self._bloch_values = multi_complex_to_Bloch(amount_qubits, select_qubit, register_as_vector, bitorder = self._params["bitOrder"])
+        self._bloch_values = multi_complex_to_Bloch(amount_qubits, select_qubit, register_as_vector,
+                                                    bitorder=self._params["bitOrder"])
 
-        # Check whether the input is between 1 and 9
         if not 0 < amount_qubits < 10 or not isinstance(amount_qubits, int):
-            raise NotImplementedError(
-                "Please enter a valid number between 1 and 9."
-            )
+            raise NotImplementedError("Please enter a valid number between 1 and 9.")
 
-        ### Hard coded visualization for 1-3 Qubits - Dynamically coded 4+ Qubits ###
-
-        # Origin x and y coordinate and
-        # length of a tick mark on the axis
         x, y, len_tick = -2, 7, .2
 
-        # Set position of circles in DCN
         if amount_qubits >= 1:
-            # 1+ Qubits:
             self._coords = np.array([[0, 1], [1, 1]], dtype=float)
-            self._bloch_coords = np.array([[0.5,1]], dtype=float)
-            # Set distance
+            self._bloch_coords = np.array([[0.0, 1]], dtype=float)
             self._coords *= d
             self._bloch_coords *= d
 
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
                 x_pos = x + 1
                 y_pos = y - 2
@@ -284,17 +243,9 @@ class SphereNotation(Visualization):
                 elif amount_qubits > 2:
                     x_pos += -1.2
                     y_pos += 0.3
-                self._ax.text(
-                    x_pos + 1.2,  # TODO hier auch evtl auch mit x und y
-                    y_pos + 0.3,
-                    "Qubit 1",
-                    **self._textStyle
-                )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
+                self._ax.text(x_pos + 1.2, y_pos + 0.3, "Qubit 1", **self._textStyle)
                 self._ax.arrow(x_pos, y_pos, 2.3, 0, **self._arrowStyle)
-            # DCN V2: different coordinate axes
             else:
-                # Horizontal axis (x,y,dx,dy, **kwargs)
                 if amount_qubits == 1:
                     self._ax.arrow(x + 0.5, y - 2, 6.3, 0, **self._arrowStyle)
                     y = 5
@@ -305,171 +256,82 @@ class SphereNotation(Visualization):
                     self._ax.arrow(x, y, 6.5, 0, **self._arrowStyle)
 
                 tick_y = [y - len_tick, y + len_tick]
-                # 1st tick on x axis
-                self._ax.plot(
-                    [self._coords[0, 0], self._coords[0, 0]],
-                    tick_y,
-                    **self._plotStyle
-                )
-                self._ax.text(
-                    self._coords[0, 0],
-                    y + 2.5 * len_tick,
-                    "0",
-                    **self._textStyle,
-                )
-                # 2nd tick on x axis
-                self._ax.plot(
-                    [self._coords[0, 1], self._coords[0, 1]],
-                    tick_y,
-                    **self._plotStyle,
-                )
-                self._ax.text(
-                    self._coords[0, 1],
-                    y + 2.5 * len_tick,
-                    "1",
-                    **self._textStyle,
-                )
-                self._ax.text(
-                    self._coords[0, 1] / 2,
-                    y + 3 * len_tick,
-                    "Qubit 1",
-                    **self._textStyle,
-                )
+                self._ax.plot([self._coords[0, 0], self._coords[0, 0]], tick_y, **self._plotStyle)
+                self._ax.text(self._coords[0, 0], y + 2.5 * len_tick, "0", **self._textStyle)
+                self._ax.plot([self._coords[0, 1], self._coords[0, 1]], tick_y, **self._plotStyle)
+                self._ax.text(self._coords[0, 1], y + 2.5 * len_tick, "1", **self._textStyle)
+                self._ax.text(self._coords[0, 1] / 2, y + 3 * len_tick, "Qubit 1", **self._textStyle)
+
             if amount_qubits == 1:
-                # Set axis limits
                 self._ax.set_xlim([-1.6, 5.3])
                 self._ax.set_ylim([2.3, 5.5])
-        # 2+ Qubits:
+
         if amount_qubits >= 2:
             self._coords = np.concatenate((self._coords, np.array([[0, 0], [d, 0]])))
             if select_qubit == 1:
-                self._bloch_coords = np.array([[0.5, 1],[0.5, 0]], dtype=float)
+                self._bloch_coords = np.array([[0.0, 1], [0.0, 0]], dtype=float)
             else:
-                self._bloch_coords = np.array([[0, 0.5],[1, 0.5]], dtype=float)
+                self._bloch_coords = np.array([[0, 1.0], [1.0, 1.0]], dtype=float)
 
             self._bloch_coords *= d
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
                 x_pos = x + 0.35
                 y_pos = y - 2.75
                 if amount_qubits > 2:
                     x_pos -= 0.7
-                self._ax.text(
-                    x_pos - 0.15,
-                    y_pos,
-                    "Qubit 2",
-                    **self._textStyle,
-                    rotation=90
-                )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
+                self._ax.text(x_pos - 0.15, y_pos, "Qubit 2", **self._textStyle, rotation=90)
                 self._ax.arrow(x_pos + 0.15, y_pos + 1.05, 0, -2.3, **self._arrowStyle)
-
-            # DCN V2: different coordinate axes
             else:
-                # Vertical axis
                 if amount_qubits == 2:
                     self._ax.arrow(x, y, 0, -6, **self._arrowStyle)
                 else:
                     self._ax.arrow(x, y, 0, -8, **self._arrowStyle)
+
                 tick_x = [x - len_tick, x + len_tick]
-                # 1st tick on y axis
-                self._ax.plot(
-                    tick_x,
-                    [self._coords[0, 1], self._coords[0, 1]],
-                    **self._plotStyle,
-                )
-                self._ax.text(
-                    x - 2.5 * len_tick,
-                    self._coords[0, 1],
-                    "0",
-                    **self._textStyle,
-                    rotation=90
-                )
-                # 2nd tick on y axis
-                self._ax.plot(
-                    tick_x,
-                    [self._coords[3, 1], self._coords[3, 1]],
-                    **self._plotStyle,
-                )
-                self._ax.text(
-                    x - 2.5 * len_tick,
-                    self._coords[3, 1],
-                    "1",
-                    **self._textStyle,
-                    rotation=90
-                )
-                self._ax.text(
-                    x - 3 * len_tick,
-                    self._coords[0, 1] / 2,
-                    "Qubit 2",
-                    **self._textStyle,
-                    rotation=90,
-                )
+                self._ax.plot(tick_x, [self._coords[0, 1], self._coords[0, 1]], **self._plotStyle)
+                self._ax.text(x - 2.5 * len_tick, self._coords[0, 1], "0", **self._textStyle, rotation=90)
+                self._ax.plot(tick_x, [self._coords[3, 1], self._coords[3, 1]], **self._plotStyle)
+                self._ax.text(x - 2.5 * len_tick, self._coords[3, 1], "1", **self._textStyle, rotation=90)
+                self._ax.text(x - 3 * len_tick, self._coords[0, 1] / 2, "Qubit 2", **self._textStyle, rotation=90)
+
             if amount_qubits == 2:
-                # Set axis limits
                 self._ax.set_xlim([-2.8, 5])
                 self._ax.set_ylim([-1.5, 5.8])
 
-        # 3+ Qubits:
         if amount_qubits >= 3:
-            # Double the array
             self._coords = np.concatenate((self._coords, self._coords))
-            # Offset 3rd dim circles to the rear from position of the first 4 circles
-            self._coords[4:] += d/2
+            self._coords[4:] += d / 2
 
             if select_qubit == 1 or select_qubit == 2:
                 self._bloch_coords = np.concatenate((self._bloch_coords, self._bloch_coords))
-                self._bloch_coords[2:] += d/2
+                self._bloch_coords[2:] += d / 2
             else:
-                self._bloch_coords = np.array([[0,d],[d,d],[0, 0], [d, 0]])
-                self._bloch_coords += d/2
+                self._bloch_coords = np.array([[0, d], [d, d], [0, 0], [d, 0]])
 
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
-                self._ax.text(
-                    x + 0.55,
-                    y - 0.55,
-                    "Qubit 3",
-                    **self._textStyle,
-                    rotation=45
-                )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
-                self._ax.arrow(x - 0.2, y - 1.7, d/2-0.1, d/2-0.1, **self._arrowStyle)
-
-            # DCN V2: different coordinate axes
+                self._ax.text(x + 0.55, y - 0.55, "Qubit 3", **self._textStyle, rotation=45)
+                self._ax.arrow(x - 0.2, y - 1.7, d / 2 - 0.1, d / 2 - 0.1, **self._arrowStyle)
             else:
-                # Diagonal axis
-                self._ax.arrow(x, y, d-0.2, d-0.2, **self._arrowStyle)
+                self._ax.arrow(x, y, d - 0.2, d - 0.2, **self._arrowStyle)
                 len_tick_z = len_tick / np.sqrt(2)
                 off1, off2 = 0.8, 2.2
-                # 1st tick on z axis
+
                 self._ax.plot(
                     [x + off1 + len_tick_z, x + off1 - len_tick_z],
                     [y + off1 - len_tick_z, y + off1 + len_tick_z],
                     **self._plotStyle,
                 )
-                self._ax.text(
-                    x + off1 - 2.5 * len_tick_z,
-                    y + off1 + 2.5 * len_tick_z,
-                    "0",
-                    **self._textStyle,
-                    rotation=45
-                )
-                # 2nd tick on z axis
+                self._ax.text(x + off1 - 2.5 * len_tick_z, y + off1 + 2.5 * len_tick_z, "0", **self._textStyle,
+                              rotation=45)
+
                 self._ax.plot(
                     [x + off2 + len_tick_z, x + off2 - len_tick_z],
                     [y + off2 - len_tick_z, y + off2 + len_tick_z],
                     **self._plotStyle,
                 )
-                self._ax.text(
-                    x + off2 - 2.5 * len_tick_z,
-                    y + off2 + 2.5 * len_tick_z,
-                    "1",
-                    **self._textStyle,
-                    rotation=45
-                )
+                self._ax.text(x + off2 - 2.5 * len_tick_z, y + off2 + 2.5 * len_tick_z, "1", **self._textStyle,
+                              rotation=45)
+
                 middle_ticks = (off2 - off1) / 2
                 self._ax.text(
                     x + off1 + (middle_ticks) - 5.5 * len_tick_z,
@@ -479,187 +341,174 @@ class SphereNotation(Visualization):
                     rotation=45
                 )
             if amount_qubits == 3:
-                # Set axis limits
                 if self._params['version'] == 1:
                     self._ax.set_ylim([-1.5, 7.5])
                 else:
                     self._ax.set_ylim([-1.5, 10.8])
                 self._ax.set_xlim([-4.8, 8.5])
-        # 4+ Qubits:
-        if amount_qubits >= 4:  # Setting up remaining qubits and axis labels for qubits 4+
+
+        if amount_qubits >= 4:
             if select_qubit >= 4:
-                orig_array = np.array([[0,d],[d,d],[0, 0], [d, 0]])
+                orig_array = np.array([[0, d], [d, d], [0, 0], [d, 0]])
                 self._bloch_coords = np.concatenate((orig_array, orig_array))
                 self._bloch_coords[len(self._bloch_coords) // 2:] += d / 2
 
-            iter_control = 0
             for i in range(4, amount_qubits + 1):
                 quarter_axis_length = (2 ** int(i / 2))
                 self._coords = np.concatenate((self._coords, self._coords))
                 if select_qubit < 4:
                     self._bloch_coords = np.concatenate((self._bloch_coords, self._bloch_coords))
 
-                if select_qubit >= 4 and iter_control == 1:
+                if select_qubit >= 4 and i >= 5:
                     self._bloch_coords = np.concatenate((self._bloch_coords, self._bloch_coords))
 
-                iter_control = 1
 
-                if (i % 2 == 0):  # Horizontal axes
-                    # Shift it along the X-axis
+                if (i % 2 == 0):
                     self._coords[len(self._coords) // 2:, 0] += 2 ** (i / 2 + 1)
 
                     if select_qubit < 4:
                         self._bloch_coords[len(self._bloch_coords) // 2:, 0] += 2 ** (i / 2 + 1)
-                    elif select_qubit % 2 == 0:
-                        self._bloch_coords[:, 0] += 2 ** (i / 2)
-                    elif select_qubit % 2 == 1:
-                        self._bloch_coords[:, 1] -= 2 ** (i / 2)
+                    elif i >= 6:
+                        self._bloch_coords[len(self._bloch_coords) // 2:, 0] += 2 ** (i / 2 + 1)
+
 
 
                     self._ax.arrow(x, y + i, 4 * quarter_axis_length, 0, **self._arrowStyle)
-                    self._ax.plot(  # |0> area
+                    self._ax.plot(
                         [x + quarter_axis_length / 6, x + quarter_axis_length * 1.875],
                         [y + i - 0.3 * len_tick, y + i - 0.3 * len_tick],
-                        color='black',
-                        linewidth=2,
-                        linestyle="solid",
-                        zorder=1
+                        color='black', linewidth=2, linestyle="solid", zorder=1
                     )
-                    self._ax.text(
-                        x + quarter_axis_length,
-                        y + i + 2.5 * len_tick,
-                        "0",
-                        **self._textStyle,
-                    )
-                    self._ax.plot(  # |1> area
+                    self._ax.text(x + quarter_axis_length, y + i + 2.5 * len_tick, "0", **self._textStyle)
+
+                    self._ax.plot(
                         [x + 2.125 * quarter_axis_length, x + quarter_axis_length * 3.875],
                         [y + i - 0.3 * len_tick, y + i - 0.3 * len_tick],
-                        color='black',
-                        linewidth=2,
-                        linestyle="solid",
-                        zorder=1
+                        color='black', linewidth=2, linestyle="solid", zorder=1
                     )
-                    self._ax.text(
-                        3 * quarter_axis_length - 2,
-                        y + i + 2.5 * len_tick,
-                        "1",
-                        **self._textStyle,
-                    )
-                    self._ax.text(
-                        2 * quarter_axis_length - 2,
-                        y + i + 3 * len_tick,
-                        f"Qubit {i}",
-                        **self._textStyle,
-                    )
-                else:  # Vertical axes
-                    # Shift it along the Y-axis
+                    self._ax.text(3 * quarter_axis_length - 2, y + i + 2.5 * len_tick, "1", **self._textStyle)
+                    self._ax.text(2 * quarter_axis_length - 2, y + i + 3 * len_tick, f"Qubit {i}", **self._textStyle)
+                else:
                     self._coords[len(self._coords) // 2:, 1] -= 2 ** ((i + 1) / 2)
 
                     if select_qubit < 4:
                         self._bloch_coords[len(self._bloch_coords) // 2:, 1] -= 2 ** ((i + 1) / 2)
-
                     elif select_qubit % 2 == 0:
-                        self._bloch_coords[len(self._bloch_coords) // 2:, 1] -= 2 ** (i / 2 + 1)
+                        self._bloch_coords[len(self._bloch_coords) // 2:, 1] -= 2 ** ((i + 1) / 2)
                     elif select_qubit % 2 == 1:
-                        self._bloch_coords[len(self._bloch_coords) // 2:, 0] += 2 ** (i / 2 + 1)
+                        self._bloch_coords[len(self._bloch_coords) // 2:, 0] += 2 ** ((i + 1) / 2)
 
                     x_pos = x + 3 - i
                     self._ax.arrow(x_pos, y, 0, -4 * quarter_axis_length, **self._arrowStyle)
-                    self._ax.plot(  # |0> area
+
+                    self._ax.plot(
                         [x_pos + 0.3 * len_tick, x_pos + 0.3 * len_tick],
                         [y - quarter_axis_length / 6, y - quarter_axis_length * 1.875],
-                        color='black',
-                        linewidth=2,
-                        linestyle="solid",
-                        zorder=1
+                        color='black', linewidth=2, linestyle="solid", zorder=1
                     )
-                    self._ax.text(
-                        x_pos - 2.5 * len_tick,
-                        y - quarter_axis_length,
-                        "0",
-                        **self._textStyle,
-                        rotation=90,
-                    )
-                    self._ax.plot(  # |1> area
+                    self._ax.text(x_pos - 2.5 * len_tick, y - quarter_axis_length, "0", **self._textStyle, rotation=90)
+
+                    self._ax.plot(
                         [x_pos + 0.3 * len_tick, x_pos + 0.3 * len_tick],
                         [y - 2.125 * quarter_axis_length, y - quarter_axis_length * 3.875],
-                        color='black',
-                        linewidth=2,
-                        linestyle="solid",
-                        zorder=1
+                        color='black', linewidth=2, linestyle="solid", zorder=1
                     )
-                    self._ax.text(
-                        x_pos - 2.5 * len_tick,
-                        y - 3 * quarter_axis_length,
-                        "1",
-                        **self._textStyle,
-                        rotation=90,
-                    )
-                    self._ax.text(
-                        x_pos - 3 * len_tick,
-                        y - 2 * quarter_axis_length,
-                        f"Qubit {i}",
-                        **self._textStyle,
-                        rotation=90,
-                    )
-            # Set axis limits according to plot size (grows with n for 4+ Qubits)
+                    self._ax.text(x_pos - 2.5 * len_tick, y - 3 * quarter_axis_length, "1", **self._textStyle,
+                                  rotation=90)
+                    self._ax.text(x_pos - 3 * len_tick, y - 2 * quarter_axis_length, f"Qubit {i}", **self._textStyle,
+                                  rotation=90)
+
+
+
             self._ax.set_xlim([x - 1 - 2 * ((amount_qubits - 3) // 2), x + 1 + 2 ** (amount_qubits // 2 + 2)])
             self._ax.set_ylim([y - 1 - 2 ** ((amount_qubits + 1) // 2 + 1), y + 1 + 2 * ((amount_qubits) // 2)])
 
+        def swap_middle_quarters_reverse(arr):
+            n = len(arr)
+            k = n // 4
+
+            # Reverse Q2 in-place using numpy slicing
+            arr[k: 2 * k] = arr[k: 2 * k][::-1]
+            # Reverse Q3 in-place
+            arr[2 * k: 3 * k] = arr[2 * k: 3 * k][::-1]
+            # Reverse the combined block
+            arr[k: 3 * k] = arr[k: 3 * k][::-1]
+
+            return arr
+
+        def iterate_through_swaps(arr,it_number):
+            k = len(arr) // it_number
+            for i in range(it_number):
+                arr[i*k : (i+1)*k] = swap_middle_quarters_reverse(arr[i*k : (i+1)*k])
+            return arr
+
+        if select_qubit == 6:
+            if amount_qubits == 6:
+                self._bloch_coords = swap_middle_quarters_reverse(self._bloch_coords)
+                self._bloch_coords[len(self._bloch_coords) // 2:, 0] -= 2 ** ((5 + 1) / 2)
+            if amount_qubits == 7:
+                self._bloch_coords[len(self._bloch_coords) // 4:len(self._bloch_coords) // 2, 0] -= 2 ** ((5 + 1) / 2)
+                self._bloch_coords[3*len(self._bloch_coords) // 4:, 0] -= 2 ** ((5 + 1) / 2)
+                self._bloch_coords = iterate_through_swaps(self._bloch_coords, 2)
+
+                # self._bloch_coords = reverse_inner_chunks(self._bloch_coords, 4)
+
+
+
         self._bloch_coords = self._bloch_coords[::self._params["bitOrder"]]
-        # Draw all circles
+
+        # Draw all spheres
         self._draw_all_spheres()
 
         self._ax.set_axis_off()
-
-        # Flip axis labels if bitOrder is set to 1
         self._axis_labels = np.arange(1, amount_qubits + 1)[:: self._params["bitOrder"]]
 
+        # ==========================================
+        # DYNAMIC COLORBAR PLACEMENT & LABELS
+        # ==========================================
         try:
-            # --- YOUR PLOTTING CODE ---
+            cbar_size = 2.5  # Data units
+            if amount_qubits == 2:
+                arr_x = x + 6.5
+            else:
+                quarter_axis_length = (2 ** int(amount_qubits / 2))
+                arr_x = x + 4 * quarter_axis_length
 
-            # 1. Create the Polar Axes
-            # [left, bottom, width, height]
-            cbar_ax = self.fig.add_axes([0.89, 0.40, 0.1, 0.1], projection='polar')
+            # Center vertically to match the relative 0.45 height used by the odd-qubit layout
+            ymin, ymax = self._ax.get_ylim()
+            cbar_center_y = ymin + 0.45 * (ymax - ymin)
 
-            # 2. Create the data for the ring
+            cbar_ax = self._ax.inset_axes(
+                [arr_x + 0.5, cbar_center_y - cbar_size / 2, cbar_size, cbar_size],
+                transform=self._ax.transData,
+                projection='polar'
+            )
+
             n_segments = 360
             theta = np.linspace(0, 2 * np.pi, n_segments)
             r = np.linspace(0.6, 1, 2)
             Theta, R = np.meshgrid(theta, r)
-
-            # 3. Shift the Color Mapping
-            # Formula: (Theta + Shift) % 2pi
-            # The shift needed is 5pi/4.
             ColorVals = (Theta + 5 * np.pi / 4) % (2 * np.pi)
 
-            # 4. Plot the color wheel
-            # Use the custom 'husl_cmap' instead of 'plt.cm.hsv'
             mesh = cbar_ax.pcolormesh(Theta, R, ColorVals, cmap=self.husl_cmap, shading='auto', vmin=0, vmax=2 * np.pi)
 
-            # 5. Configure Ticks
-            cbar_ax.set_yticks([])  # Remove radial ticks
-
-            tick_locs = [0, np.pi / 2, np.pi, 3 * np.pi / 2]
-            cbar_ax.set_xticks(tick_locs)
-            cbar_ax.set_xticklabels([r'$0$', r'$\pi/2$', r'$\pi$', r'$3\pi/2$'])
-
-            # Remove outer spine
+            cbar_ax.set_yticks([])
+            cbar_ax.set_xticks([])  # Clear default ticks to pull them closer manually
             cbar_ax.spines['polar'].set_visible(False)
 
-            # 6. Label
-            # cbar_ax.text(0.5, 0.5, 'Phase\n(rad)',
-            #              horizontalalignment='center',
-            #              verticalalignment='center',
-            #              transform=cbar_ax.transAxes, fontsize=11, fontweight='bold')
+            # Manual tight label placement
+            pad_r = 1.25  # Tightly anchored to the outer ring of the color wheel
+            lbl_size = self._params['textsize_magphase']
+
+            cbar_ax.text(0, pad_r, r'$0$', ha='left', va='center', fontsize=lbl_size)
+            cbar_ax.text(np.pi / 2, pad_r, r'$\pi/2$', ha='center', va='bottom', fontsize=lbl_size)
+            cbar_ax.text(np.pi, pad_r, r'$\pi$', ha='right', va='center', fontsize=lbl_size)
+            cbar_ax.text(3 * np.pi / 2, pad_r, r'$3\pi/2$', ha='center', va='top', fontsize=lbl_size)
 
         except Exception as e:
             print(f"Error creating circular colorbar: {e}")
 
     def _draw_all_spheres(self):
-        """Internal method to iterate through calculated coordinates and
-        Bloch parameters, drawing each sphere using inset_axes.
-        """
         if self._bloch_coords is None or self._bloch_values is None:
             return
         if len(self._bloch_coords) != len(self._bloch_values):
@@ -673,7 +522,6 @@ class SphereNotation(Visualization):
             bloch_params = self._bloch_values[i]
 
             try:
-                # Parameters are now guaranteed to be real floats
                 radius = bloch_params[0]
                 angle = bloch_params[1]
                 theta = bloch_params[2]
@@ -699,10 +547,8 @@ class SphereNotation(Visualization):
                 outer_radius=outer_radius
             )
 
-            # Plot executes directly onto the bound inset_ax
-            sphere.plot(ax=inset_ax)
+            sphere.plot(ax=inset_ax, fontsize=self._params['textsize_register'])
 
-            # Strip the background panes
             pane_color = (1.0, 1.0, 1.0, 0.0)
             inset_ax.set_facecolor(pane_color)
             inset_ax.xaxis.set_pane_color(pane_color)
@@ -718,55 +564,22 @@ class SphereNotation(Visualization):
 
             inset_ax.set_axis_off()
 
-
-    # Helper function (needs implementation based on ordering)
     def _get_fixed_state_label(self, index, n_qubits, selected_qubit):
-         """ Calculates the binary label for the fixed qubits corresponding to sphere index."""
-         if n_qubits == 1: return ""
-         num_fixed = n_qubits - 1
-         # Assumes standard binary order for fixed qubits
-         binary_format = "{:0" + str(num_fixed) + "b}"
-         binary_string = binary_format.format(index)
+        if n_qubits == 1: return ""
+        num_fixed = n_qubits - 1
+        binary_format = "{:0" + str(num_fixed) + "b}"
+        binary_string = binary_format.format(index)
 
-         # Insert '-' for the selected qubit's position
-         label_list = list(binary_string)
-         label_list.insert(selected_qubit - 1, '-') # selected_qubit is 1-based
-         return "|" + "".join(label_list) + ">"
+        label_list = list(binary_string)
+        label_list.insert(selected_qubit - 1, '-')
+        return "|" + "".join(label_list) + ">"
 
 
 def complex_to_bloch(vector):
-    """
-    Converts a qubit state given by two complex numbers (alpha, beta)
-    to its Bloch sphere coordinates (theta, phi).
-
-    The qubit is assumed to be in the form:
-        |ψ⟩ = α|0⟩ + β|1⟩
-    with normalization |α|^2 + |β|^2 = 1.
-
-    The corresponding Bloch sphere parameters are defined as:
-        α = cos(θ/2)
-        β = e^(i φ) sin(θ/2)
-
-    This function normalizes the input state, removes the global phase
-    (by making α real and nonnegative), and then computes:
-        θ = 2 arccos(|α|)
-        φ = arg(β)
-
-    Parameters:
-        alpha (complex): The amplitude for |0⟩.
-        beta (complex):  The amplitude for |1⟩.
-
-    Returns:
-        theta (float): The polar angle, in radians (0 ≤ θ ≤ π).
-        phi (float): The azimuthal angle, in radians (0 ≤ φ < 2π).
-    """
     vector, norm = normalize_vector(vector)
-
-    # Ensure the inputs are of type complex
     alpha = complex(vector[0])
     beta = complex(vector[1])
 
-    # Remove global phase: rotate so that alpha becomes real and nonnegative
     if np.abs(alpha) > 1e-6:
         global_phase = np.angle(alpha)
     else:
@@ -775,21 +588,14 @@ def complex_to_bloch(vector):
     alpha *= np.exp(-1j * global_phase)
     beta *= np.exp(-1j * global_phase)
 
-    # Compute theta using the relation: alpha = cos(theta/2)
-    # Clip to [0, 1] to avoid numerical issues.
     theta = 2 * np.arccos(np.clip(np.real(alpha), 0, 1))
-
-    # Compute phi from beta = e^(i φ) sin(theta/2)
     phi = np.angle(beta)
-    # Optionally convert phi from (-pi, pi] to [0, 2*pi)
-    # if phi < 0:
-        # phi += 2 * np.pi
+
     return float(norm), float(global_phase), float(theta), float(phi)
 
 
 def select_qubits(n, sel_qubit):
     reordered_list = []
-    # Explicitly cast to integer to guarantee valid array indices
     dif = int(2 ** (sel_qubit - 1))
     N = int(2 ** (n - 1))
 
@@ -802,28 +608,15 @@ def select_qubits(n, sel_qubit):
     return pairs
 
 
-def multi_complex_to_Bloch(n,sel_qubit,vector, bitorder=1):
+def multi_complex_to_Bloch(n, sel_qubit, vector, bitorder=1):
     if isinstance(vector, Simulator):
         vector = vector._register.flatten()
     vector = normalize_vector(vector)[0][::bitorder]
     multi_bloch = []
-    for pair in select_qubits(n,sel_qubit):
+    for pair in select_qubits(n, sel_qubit):
         if vector[pair[0]] == 0 and vector[pair[1]] == 0:
-            multi_bloch.append([0,0,0,0])
+            multi_bloch.append([0, 0, 0, 0])
         else:
             norm, global_phase, theta, phi = complex_to_bloch([vector[pair[0]], vector[pair[1]]])
-            multi_bloch.append([norm,global_phase,theta,phi])
+            multi_bloch.append([norm, global_phase, theta, phi])
     return multi_bloch[::bitorder]
-
-# Example usage:
-if __name__ == '__main__':
-    # Create four BlochSphere instances with different rotations for a 2x2 grid.
-    sel_qubit = 2
-    vector_3 = [0, 1, 1, 0, 1, 0, 0, 0]
-    sim_3 = Simulator(3)
-    sim_3.writeComplex(vector_3)
-
-    Bloch_vis = SphereNotation(sim_3, select_qubit=sel_qubit)
-    Bloch_vis.draw()
-
-    plt.show()

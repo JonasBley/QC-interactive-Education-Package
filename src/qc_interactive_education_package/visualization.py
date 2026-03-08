@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # Created By: Nikolas Longen, nlongen@rptu.de
-# Modified By: Patrick Pfau, ppfau@rptu.de
+# Modified By: Patrick Pfau, ppfau@rptu.de and Jonas Bley, jonas.bley@rptu.de
 # Reviewed By: Maximilian Kiefer-Emmanouilidis, maximilian.kiefer@rptu.de
 # Created: March 2023
 # Project: DCN QuanTUK
@@ -10,14 +10,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
-# from matplotlib.textpath import TextPath
-# from matplotlib.patches import PathPatch
 from io import BytesIO
 from base64 import b64encode
 import numpy as np
-
-
-# TODO: Implement logging
 
 
 class Visualization:
@@ -27,13 +22,8 @@ class Visualization:
     overwrite the __init__ method.
     """
 
-    def __init__(self, simulator, parse_math=True):
-        """Constructor for Visualization superclass.
-
-        Args:
-            simulator (qc_simulator.simulator): Simulator object to be
-            visualized.
-        """
+    # FIXED: Added figsize to the base constructor to persist dimensions across redraws
+    def __init__(self, simulator, parse_math=True, figsize=(8.0, 6.0), **kwargs):
         self._sim = simulator
         self.fig = None
         self._lastState = None
@@ -45,72 +35,44 @@ class Visualization:
             "transparent": True,
             "showValues": False,
             "bitOrder": simulator._bitOrder,
+            "figsize": figsize  # <--- Locked in state
         }
 
     def exportPNG(self, fname: str, title=""):
-        """Export the current visualization as PNG image to given path.
-
-        Args:
-            fname (str): fname or path to export image to.
-        """
         self._export(fname, "png", title)
 
     def exportPDF(self, fname: str, title=""):
-        """Export the current visualization as PDF file to given path.
-
-        Args:
-            fname (str): fname or path to export file to.
-        """
         self._export(fname, "pdf", title)
 
     def exportSVG(self, fname: str, title=""):
-        """Export the current visualization as SVG image to given path.
-
-        Args:
-            fname (str): fname or path to export image to.
-        """
         mpl.rcParams["svg.fonttype"] = "none"  # Export as text and not paths
         self._export(fname, "svg", title)
 
     def exportBase64(self, formatStr="png"):
-        """Exports the figure to a base64 string."""
-        from io import BytesIO
-        import base64
-
         self._redraw()
         buf = BytesIO()
 
-        # Save to buffer
-        self.fig.savefig(buf, format=formatStr, bbox_inches='tight', transparent=True)
+        self.fig.savefig(
+            buf,
+            format=formatStr,
+            bbox_inches='tight',
+            pad_inches=0,
+            dpi=self._params["dpi"],
+            transparent=self._params["transparent"]
+        )
 
-        # CLEANUP: Close the figure so the user doesn't have to
         plt.close(self.fig)
+        self.fig = None
+        self._lastState = None
 
-        return base64.b64encode(buf.getvalue()).decode('utf-8')
+        return b64encode(buf.getvalue()).decode('utf-8')
 
     def _exportBuffer(self, formatStr, title=""):
-        """Export current visualization in format into IO buffer.
-
-        Args:
-            formatStr (str, optional): Format for image. Defaults to 'png'.
-
-        Returns:
-            BytesIO: returns view of buffer containing image using
-            BytesIO.getbuffer()
-        """
         buf = BytesIO()
         self._export(buf, formatStr, title)
         return buf.getbuffer()
 
     def _export(self, target: str, formatStr: str, title: str):
-        """General export method to save current pyplot figure, so all all
-        exports will share same form factor, res etc.
-
-        Args:
-            target (plt.savefig compatible object): Target to save pyplot
-            figure to.
-            formatStr (str, optional): Format for image. Defaults to 'png'.
-        """
         self._redraw()
         self.fig.suptitle(title)
         self.fig.savefig(
@@ -123,144 +85,81 @@ class Visualization:
         )
 
     def show(self):
-        """
-        Method to show current figure.
-        Robustly detects the execution environment and guarantees graphical
-        rendering without triggering IDE unresolved reference warnings.
-        """
         self._redraw()
 
-        # 1. Strictly verify if we are executing inside a Jupyter/IPython Kernel
         in_jupyter = False
         try:
-            # Explicit import resolves IDE "Unresolved reference" warnings
             from IPython import get_ipython
-
-            # get_ipython() returns None if IPython is installed but not running a kernel
             ipython_instance = get_ipython()
             if ipython_instance is not None:
                 shell = ipython_instance.__class__.__name__
                 if shell == 'ZMQInteractiveShell':
                     in_jupyter = True
         except ImportError:
-            # IPython is not installed; we are definitely in a standard terminal
             pass
 
         if in_jupyter:
             from IPython.display import display, Image
             import io
-            import matplotlib.pyplot as plt
 
-            # 2. Bypass backend state machine: Render to a byte buffer.
             buf = io.BytesIO()
-            self.fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+            self.fig.savefig(
+                buf,
+                format='png',
+                bbox_inches='tight',
+                pad_inches=0,
+                dpi=self._params["dpi"],
+                transparent=self._params["transparent"]
+            )
 
-            # 3. Clean up RAM immediately to prevent memory leaks
             plt.close(self.fig)
+            self.fig = None
+            self._lastState = None
 
-            # 4. Push the raw PNG bytes directly into the browser DOM
             display(Image(data=buf.getvalue()))
         else:
-            # 5. Fallback for standard Python terminal/IDE execution
-            import matplotlib.pyplot as plt
             plt.show(block=True)
 
     def _redraw(self):
-        """Checks if simulator state is changed and redraws the image if so."""
         if self._lastState != self._sim:
             self._lastState = self._sim.copy()
             self.draw()
 
     def showMagnPhase(self, show_values: bool):
-        """Switch showing magnitude and phase of each product state in a
-        register
-
-        Args:
-            show_values (bool): Show value fir true, else do not show
-        """
         self._params.update({"showValues": show_values})
 
     @classmethod
     def from_qiskit(cls, qiskit_obj, **kwargs):
-        """
-        Factory method to create a visualization instance from a Qiskit object.
-        Accepts either a QuantumCircuit or a Statevector.
-        Passes any additional keyword arguments (like select_qubit) to the subclass constructor.
-
-        Args:
-            qiskit_obj: A qiskit.QuantumCircuit or qiskit.quantum_info.Statevector.
-            **kwargs: Arbitrary keyword arguments passed to the specific visualization subclass.
-
-        Returns:
-            Visualization: An initialized instance of the visualization class.
-        """
-        # Import necessary Qiskit tools inside the method
         from qiskit import QuantumCircuit
         from qiskit.quantum_info import Statevector
 
-        # Robust import for the Simulator
         try:
             from .simulator import Simulator
         except ImportError:
             from simulator import Simulator
 
-        # 1. Handle Input Type
         if isinstance(qiskit_obj, QuantumCircuit):
-            # If it's a circuit, simulate it to get the statevector
             sv = Statevector.from_instruction(qiskit_obj)
         elif isinstance(qiskit_obj, Statevector):
-            # If it's already a statevector, use it directly
             sv = qiskit_obj
         else:
             raise TypeError("Input must be a Qiskit QuantumCircuit or Statevector.")
 
-        # 2. Initialize Custom Simulator
         sim = Simulator(sv.num_qubits)
-
-        # 3. Load the complex amplitudes
         sim.writeComplex(sv.data)
 
-        # 4. Return the Visualization Instance, passing along any subclass-specific kwargs
+        # Pass kwargs through to ensure custom figsizes map correctly
         return cls(sim, **kwargs)
 
     def draw(self):
-        # TODO: Add style guide for draw method
         pass
 
     def _createLabel(self, number: int):
-        """Creates a binary label for a given index with zero padding fitting
-        to the number of qubits.
-
-        Args:
-            number (int): Number to convert
-
-        Returns:
-            str: binary label fot the given number in braket
-        """
-        # NOTE: width is deprecated since numpy 1.12.0
         return np.binary_repr(number, width=self._sim._n)
 
-    def hist(self, qubit=None, size=100
-             ) -> tuple[np.array, mpl.figure, mpl.axes.Axes]:
-        """Create a histogram plot for repeated measurements of the simulator
-        state. Here the state of the simulator will not collaps after a
-        measurement. Arguments are passed to simulator.read(). If no qubit is
-        given (qubit=None) all qubit are measured.
-
-        Args:
-            qubit (int or list(int), optional): qubit to read.
-            Defaults to None.
-            size (int), optional): Repeat the measurement size times.
-            Default 1 Measurement.
-
-        Returns:
-            (np.array, mpl.figure, mpl.axes.Axes): Measurement results and
-            pyplot figure and axes of the histogram plot to further manipulate
-            if needed
-        """
+    def hist(self, qubit=None, size=100) -> tuple[np.array, mpl.figure.Figure, mpl.axes.Axes]:
         _, result = self._sim.read(qubit, size)
         histFig = plt.figure(0)
-        # plt.get_current_fig_manager().set_window_title("Histogram plot")
         ax = histFig.subplots()
         ax.hist(result, density=True)
         ax.set_xlabel("Measured state")
@@ -274,20 +173,9 @@ class Visualization:
 
 
 class CircleNotation(Visualization):
-    """A Visualization subclass for the well known Circle Notation
-    representation.
-    """
-
     def __init__(self, simulator, **kwargs):
-        """Constructor for the Circle Notation representation.
-
-        Args:
-            simulator (qc_simulator.simulator): Simulator object to be
-            visualized.
-            cols (int, optional): Arrange Circle Notation into a set of
-            columns. Defaults to None.
-        """
-        super().__init__(simulator)  # Execute constructor of superclass
+        # Pass kwargs to superclass to catch figsize overrides
+        super().__init__(simulator, **kwargs)
 
         self._params.update(
             {
@@ -303,11 +191,9 @@ class CircleNotation(Visualization):
                 "offset_registerValues": -2.3,
             }
         )
-
         self.fig = None
 
-    def draw(self, cols=8):  # TODO wirklich 8?
-        """Draw Circle Notation representation of current simulator state."""
+    def draw(self, cols=8):
         if self._sim._n > 6:
             raise NotImplementedError(
                 "Circle notation is only implemented for up to 6 qubits."
@@ -321,8 +207,8 @@ class CircleNotation(Visualization):
         xpos = self._c / 2
         ypos = y_max - self._c / 2
 
-        self.fig = plt.figure(layout="compressed", dpi=self._params["dpi"])
-        # plt.get_current_fig_manager().set_window_title("Circle Notation")
+        # FIXED: Enforce figsize
+        self.fig = plt.figure(layout="compressed", dpi=self._params["dpi"], figsize=self._params["figsize"])
         ax = self.fig.gca()
 
         val = np.abs(self._sim._register)
@@ -334,15 +220,13 @@ class CircleNotation(Visualization):
         ax.set_axis_off()
         ax.set_aspect("equal")
 
-        # Scale textsizes such that ratio circles to textsize constant
-        # automatic relative to length of y axis
         if (self._sim._n < 6):
             factor = 0.8
         else:
             factor = 0.6 if not self._params["showValues"] else 0.4
 
-        self._params["textsize_register"] *= factor
-        self._params["textsize_magphase"] *= factor
+        ts_reg = self._params["textsize_register"] * factor
+        ts_mag = self._params["textsize_magphase"] * factor
 
         for i in range(2 ** self._sim._n):
             if val[i] > 1e-3:
@@ -373,24 +257,17 @@ class CircleNotation(Visualization):
                 xpos,
                 ypos + self._params["offset_registerLabel"],
                 rf"$|{label:s}\rangle$",
-                size=self._params["textsize_register"],
+                size=ts_reg,
                 horizontalalignment="center",
                 verticalalignment="center",
             )
-            # NOTE text vs TextPath:
-            # text can easily be centered
-            # textpath size is fixed when zooming
-            # tp = TextPath((xpos-0.2*len(label),
-            # ypos - 1.35),
-            # f'|{label:s}>',
-            # size=0.4)
-            # ax.add_patch(PathPatch(tp, color="black"))
+
             if self._params["showValues"]:
                 ax.text(
                     xpos,
                     ypos + self._params["offset_registerValues"],
                     f"{val[i]:+2.3f}\n{np.rad2deg(phi[i]):+2.0f}°",
-                    size=self._params["textsize_magphase"],
+                    size=ts_mag,
                     horizontalalignment="center",
                     verticalalignment="center",
                 )
@@ -402,20 +279,9 @@ class CircleNotation(Visualization):
 
 
 class DimensionalCircleNotation(Visualization):
-    """A Visualization subclass for the Dimensional Circle
-    Notation (DCN) representation.
-    """
-
-    def __init__(self, simulator, parse_math=True, version=2):
-        """Constructor for the Dimensional Circle Notation
-        representation.
-
-        Args:
-            simulator (qc_simulator.simulator): Simulator object to be
-            visualized.
-        """
-        super().__init__(simulator)  # Execute constructor of superclass
-        # print(f"Setting up DCN Visualization in version {version}.")
+    def __init__(self, simulator, parse_math=True, version=2, **kwargs):
+        # Pass kwargs to superclass to catch figsize overrides
+        super().__init__(simulator, parse_math=parse_math, **kwargs)
 
         self._params.update({
             'version': version,
@@ -431,34 +297,12 @@ class DimensionalCircleNotation(Visualization):
             'width_textwidth': .1,
             'offset_registerLabel': 1.3,
             'offset_registerValues': .6,
-            # Set default text sizes for visualization
             'textsize_register': 10 * 0.7 ** ((self._sim._n - 3) // 2),
             'textsize_magphase': 8 * 0.7 ** ((self._sim._n - 3) // 2),
             'textsize_axislbl': 10 * 0.7 ** ((self._sim._n - 3) // 2),
-            'bloch_outer_radius': 0.8  # Adjust for desired size/spacing
+            'bloch_outer_radius': 0.8
         })
 
-        # Set default arrow style
-        self._arrowStyle = {
-            "width": 0.03 * 0.7 ** ((self._sim._n - 3) // 2),
-            "head_width": 0.2 * 0.7 ** ((self._sim._n - 3) // 2),
-            "head_length": 0.3 * 0.7 ** ((self._sim._n - 3) // 2),
-            "edgecolor": None,
-            "facecolor": 'black',
-        }
-        # Set default text style
-        self._textStyle = {
-            "size": self._params["textsize_register"],
-            "horizontalalignment": "center",
-            "verticalalignment": "center",
-        }
-        self._plotStyle = {
-            "color": 'black',
-            "linewidth": 0.7 ** ((self._sim._n - 3) // 2),
-            "linestyle": "solid",
-            "zorder": 0.7 ** ((self._sim._n - 3) // 2),
-        }
-        # Create empty variables for later use
         self.fig = None
         self._ax = None
         self._val, self._phi = None, None
@@ -468,50 +312,51 @@ class DimensionalCircleNotation(Visualization):
         """Draw Dimensional Circle Notation representation of current
         simulator state.
         """
-        # Setup pyplot figure
-        self.fig = plt.figure(layout="compressed")
-        # plt.get_current_fig_manager().set_window_title(
-        #     "Dimensional Circle Notation"
-        # )
+        self._textStyle = {
+            "size": self._params["textsize_register"],
+            "horizontalalignment": "center",
+            "verticalalignment": "center",
+        }
+        self._arrowStyle = {
+            "width": 0.03 * 0.7 ** ((self._sim._n - 3) // 2),
+            "head_width": 0.2 * 0.7 ** ((self._sim._n - 3) // 2),
+            "head_length": 0.3 * 0.7 ** ((self._sim._n - 3) // 2),
+            "edgecolor": None,
+            "facecolor": 'black',
+        }
+        self._plotStyle = {
+            "color": 'black',
+            "linewidth": 0.7 ** ((self._sim._n - 3) // 2),
+            "linestyle": "solid",
+            "zorder": 0.7 ** ((self._sim._n - 3) // 2),
+        }
+
+        # FIXED: Enforce figsize dynamically to prevent warping on new frames
+        self.fig = plt.figure(layout="compressed", dpi=self._params["dpi"], figsize=self._params["figsize"])
         self._ax = self.fig.gca()
         self._ax.set_axis_off()
         self._ax.set_aspect("equal")
-        # Get arrays with magnitude and phase of the register
+
         self._val = np.abs(self._sim._register)
         self._phi = -np.angle(self._sim._register, deg=False).flatten()
-        # Get x, y components of the phase for drawing phase dial inside
-        # circles
         self._lx, self._ly = np.sin(self._phi), np.cos(self._phi)
 
-        # Explicit positions for the qubits do not specify the bit-order
-        # Bitorder can be changed by flipping the value, phase, label arrays
         self._axis_labels = np.arange(
             1, self._sim._n + 1)[:: self._params["bitOrder"]]
 
-        # self._sim._n is amount of Qubits.
         amount_qubits = self._sim._n
 
-        # Check whether the input is between 1 and 9
         if not 0 < amount_qubits < 10 or not isinstance(amount_qubits, int):
             raise NotImplementedError(
                 "Please enter a valid number between 1 and 9."
             )
 
-        ### Hard coded visualization for 1-3 Qubits - Dynamically coded 4+ Qubits ###
-
-        # Origin x and y coordinate and
-        # length of a tick mark on the axis
         x, y, len_tick = -2, 7, .2
 
-        # Set position of circles in DCN
         if amount_qubits >= 1:
-            # 1+ Qubits:
             self._coords = np.array([[0, 1], [1, 1]], dtype=float)
-            # Set distance
             self._coords *= 3.5
 
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
                 x_pos = x + 1
                 y_pos = y - 2
@@ -522,16 +367,13 @@ class DimensionalCircleNotation(Visualization):
                     x_pos += -1.2
                     y_pos += 0.3
                 self._ax.text(
-                    x_pos + 1.2,  # TODO hier auch evtl auch mit x und y
+                    x_pos + 1.2,
                     y_pos + 0.3,
                     "Qubit 1",
                     **self._textStyle
                 )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
                 self._ax.arrow(x_pos, y_pos, 2.3, 0, **self._arrowStyle)
-            # DCN V2: different coordinate axes
             else:
-                # Horizontal axis (x,y,dx,dy, **kwargs)
                 if amount_qubits == 1:
                     self._ax.arrow(x + 0.5, y - 2, 6.3, 0, **self._arrowStyle)
                     y = 5
@@ -542,7 +384,6 @@ class DimensionalCircleNotation(Visualization):
                     self._ax.arrow(x, y, 6.5, 0, **self._arrowStyle)
 
                 tick_y = [y - len_tick, y + len_tick]
-                # 1st tick on x axis
                 self._ax.plot(
                     [self._coords[0, 0], self._coords[0, 0]],
                     tick_y,
@@ -554,7 +395,6 @@ class DimensionalCircleNotation(Visualization):
                     "0",
                     **self._textStyle,
                 )
-                # 2nd tick on x axis
                 self._ax.plot(
                     [self._coords[0, 1], self._coords[0, 1]],
                     tick_y,
@@ -573,15 +413,12 @@ class DimensionalCircleNotation(Visualization):
                     **self._textStyle,
                 )
             if amount_qubits == 1:
-                # Set axis limits
                 self._ax.set_xlim([-1.6, 5.3])
                 self._ax.set_ylim([2.3, 5.5])
-        # 2+ Qubits:
+
         if amount_qubits >= 2:
             self._coords = np.concatenate((self._coords, np.array([[0, 0], [3.5, 0]])))
 
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
                 x_pos = x + 0.35
                 y_pos = y - 2.75
@@ -594,18 +431,14 @@ class DimensionalCircleNotation(Visualization):
                     **self._textStyle,
                     rotation=90
                 )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
                 self._ax.arrow(x_pos + 0.15, y_pos + 1.05, 0, -2.3, **self._arrowStyle)
-
-            # DCN V2: different coordinate axes
             else:
-                # Vertical axis
                 if amount_qubits == 2:
                     self._ax.arrow(x, y, 0, -6, **self._arrowStyle)
                 else:
                     self._ax.arrow(x, y, 0, -8, **self._arrowStyle)
                 tick_x = [x - len_tick, x + len_tick]
-                # 1st tick on y axis
+
                 self._ax.plot(
                     tick_x,
                     [self._coords[0, 1], self._coords[0, 1]],
@@ -618,7 +451,6 @@ class DimensionalCircleNotation(Visualization):
                     **self._textStyle,
                     rotation=90
                 )
-                # 2nd tick on y axis
                 self._ax.plot(
                     tick_x,
                     [self._coords[3, 1], self._coords[3, 1]],
@@ -639,18 +471,13 @@ class DimensionalCircleNotation(Visualization):
                     rotation=90,
                 )
             if amount_qubits == 2:
-                # Set axis limits
                 self._ax.set_xlim([-2.8, 5])
                 self._ax.set_ylim([-1.5, 5.8])
-        # 3+ Qubits:
+
         if amount_qubits >= 3:
-            # Double the array
             self._coords = np.concatenate((self._coords, self._coords))
-            # Offset 3rd dim circles to the rear from position of the first 4 circles
             self._coords[4:] += 1.75
 
-            # old style dcn coordinate axes
-            # dirac labels are coonfigured in init already
             if self._params['version'] == 1:
                 self._ax.text(
                     x + 0.55,
@@ -659,16 +486,12 @@ class DimensionalCircleNotation(Visualization):
                     **self._textStyle,
                     rotation=45
                 )
-                # Arrows for coordinate axis (x,y,dx,dy, **kwargs)
                 self._ax.arrow(x - 0.2, y - 1.7, 1.65, 1.65, **self._arrowStyle)
-
-            # DCN V2: different coordinate axes
             else:
-                # Diagonal axis
                 self._ax.arrow(x, y, 3.3, 3.3, **self._arrowStyle)
                 len_tick_z = len_tick / np.sqrt(2)
                 off1, off2 = 0.8, 2.2
-                # 1st tick on z axis
+
                 self._ax.plot(
                     [x + off1 + len_tick_z, x + off1 - len_tick_z],
                     [y + off1 - len_tick_z, y + off1 + len_tick_z],
@@ -681,7 +504,6 @@ class DimensionalCircleNotation(Visualization):
                     **self._textStyle,
                     rotation=45
                 )
-                # 2nd tick on z axis
                 self._ax.plot(
                     [x + off2 + len_tick_z, x + off2 - len_tick_z],
                     [y + off2 - len_tick_z, y + off2 + len_tick_z],
@@ -703,22 +525,20 @@ class DimensionalCircleNotation(Visualization):
                     rotation=45
                 )
             if amount_qubits == 3:
-                # Set axis limits
                 if self._params['version'] == 1:
                     self._ax.set_ylim([-1.5, 7.5])
                 else:
                     self._ax.set_ylim([-1.5, 10.8])
                 self._ax.set_xlim([-4.8, 8.5])
-        # 4+ Qubits:
-        if amount_qubits >= 4:  # Setting up remaining qubits and axis labels for qubits 4+
+
+        if amount_qubits >= 4:
             for i in range(4, amount_qubits + 1):
                 quarter_axis_length = (2 ** int(i / 2))
                 self._coords = np.concatenate((self._coords, self._coords))
-                if (i % 2 == 0):  # Horizontal axes
-                    # Shift it along the X-axis
+                if (i % 2 == 0):
                     self._coords[len(self._coords) // 2:, 0] += 2 ** (i / 2 + 1)
                     self._ax.arrow(x, y + i, 4 * quarter_axis_length, 0, **self._arrowStyle)
-                    self._ax.plot(  # |0> area
+                    self._ax.plot(
                         [x + quarter_axis_length / 6, x + quarter_axis_length * 1.875],
                         [y + i - 0.3 * len_tick, y + i - 0.3 * len_tick],
                         color='black',
@@ -732,7 +552,7 @@ class DimensionalCircleNotation(Visualization):
                         "0",
                         **self._textStyle,
                     )
-                    self._ax.plot(  # |1> area
+                    self._ax.plot(
                         [x + 2.125 * quarter_axis_length, x + quarter_axis_length * 3.875],
                         [y + i - 0.3 * len_tick, y + i - 0.3 * len_tick],
                         color='black',
@@ -752,12 +572,11 @@ class DimensionalCircleNotation(Visualization):
                         f"Qubit {i}",
                         **self._textStyle,
                     )
-                else:  # Vertical axes
-                    # Shift it along the Y-axis
+                else:
                     self._coords[len(self._coords) // 2:, 1] -= 2 ** ((i + 1) / 2)
                     x_pos = x + 3 - i
                     self._ax.arrow(x_pos, y, 0, -4 * quarter_axis_length, **self._arrowStyle)
-                    self._ax.plot(  # |0> area
+                    self._ax.plot(
                         [x_pos + 0.3 * len_tick, x_pos + 0.3 * len_tick],
                         [y - quarter_axis_length / 6, y - quarter_axis_length * 1.875],
                         color='black',
@@ -772,7 +591,7 @@ class DimensionalCircleNotation(Visualization):
                         **self._textStyle,
                         rotation=90,
                     )
-                    self._ax.plot(  # |1> area
+                    self._ax.plot(
                         [x_pos + 0.3 * len_tick, x_pos + 0.3 * len_tick],
                         [y - 2.125 * quarter_axis_length, y - quarter_axis_length * 3.875],
                         color='black',
@@ -794,43 +613,30 @@ class DimensionalCircleNotation(Visualization):
                         **self._textStyle,
                         rotation=90,
                     )
-            # Set axis limits according to plot size (grows with n for 4+ Qubits)
             self._ax.set_xlim([x - 1 - 2 * ((amount_qubits - 3) // 2), x + 1 + 2 ** (amount_qubits // 2 + 2)])
             self._ax.set_ylim([y - 1 - 2 ** ((amount_qubits + 1) // 2 + 1), y + 1 + 2 * ((amount_qubits) // 2)])
 
-        # Draw all circles
         self.draw_all_circles(amount_qubits)
 
-        # Flip axis labels if bitOrder is set to 1
         self._axis_labels = np.arange(1, amount_qubits + 1
                                       )[:: self._params["bitOrder"]]
 
     def draw_all_circles(self, amount_qubits=None):
-        # In the following the index is used to draw wires of circles
         if amount_qubits < 3:
             self._drawLine([0, 1])
         if amount_qubits == 2:
             self._drawLine([0, 2, 3, 1])
         for i in range(2 ** amount_qubits):
             if (i % 8 == 0 and amount_qubits > 2):
-                # Draw wires of each cube
                 self._drawLine([i, i + 4, i + 5])
                 self._drawLine([i + 1, i + 5, i + 7, i + 3])
                 self._drawLine([i, i + 2, i + 3, i + 1])
                 self._drawLine([i, i + 1])
                 self._drawDottedLine([i + 2, i + 6, i + 7])
                 self._drawDottedLine([i + 4, i + 6])
-            # Draw all circles
             self._drawCircle(i)
 
     def _drawDottedLine(self, index):
-        """Helper method:
-        Draw dotted lines connecting points at given index. The coordinates of
-        the points a defined internal in the _coords array
-
-        Args:
-            index (nested list([float, float]): List of indices
-        """
         self._ax.plot(
             self._coords[index, 0],
             self._coords[index, 1],
@@ -841,13 +647,6 @@ class DimensionalCircleNotation(Visualization):
         )
 
     def _drawLine(self, index):
-        """Helper method:
-        Draw lines connecting the given points at given index. The coordinates
-        of the points a defined internal in the _coords array.
-
-        Args:
-            index (nested list([float, float]): List of indices
-        """
         self._ax.plot(
             self._coords[index, 0],
             self._coords[index, 1],
@@ -858,15 +657,7 @@ class DimensionalCircleNotation(Visualization):
         )
 
     def _drawCircle(self, index):
-        """Helper method:
-        Draw single circle for DCN. Position and values of the circle are
-        provided internal. Hand over the corect index
-
-        Args:
-            index (int): Index of the circle to be drawn.
-        """
         xpos, ypos = self._coords[index]
-        # White bg circle area of unit circle
         bg = mpatches.Circle(
             (xpos, ypos),
             radius=1,
@@ -874,7 +665,7 @@ class DimensionalCircleNotation(Visualization):
             edgecolor=None
         )
         self._ax.add_artist(bg)
-        # Fill area of unit circle
+
         if self._val[index] >= 1e-3:
             fill = mpatches.Circle(
                 (xpos, ypos),
@@ -883,7 +674,7 @@ class DimensionalCircleNotation(Visualization):
                 edgecolor=None,
             )
             self._ax.add_artist(fill)
-        # Black margin for circles
+
         ring = mpatches.Circle(
             (xpos, ypos),
             radius=1,
@@ -892,7 +683,7 @@ class DimensionalCircleNotation(Visualization):
             linewidth=self._params["width_edge"],
         )
         self._ax.add_artist(ring)
-        # Indicator for phase
+
         if self._val[index] >= 1e-3:
             phase = mlines.Line2D(
                 [xpos, xpos + self._lx[index]],
@@ -911,7 +702,6 @@ class DimensionalCircleNotation(Visualization):
             place = -1
 
         if self._params['labels_dirac']:
-            # Add dirac label to circle
             self._ax.text(
                 xpos,
                 ypos + place * self._params["offset_registerLabel"],
@@ -933,4 +723,3 @@ class DimensionalCircleNotation(Visualization):
                 horizontalalignment="center",
                 verticalalignment="center",
             )
-
