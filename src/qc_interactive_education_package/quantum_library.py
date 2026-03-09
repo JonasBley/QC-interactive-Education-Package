@@ -465,23 +465,12 @@ class QuantumCurriculum:
         full_sv = Statevector.from_label('00').tensor(psi)
         qc_teleport = QuantumCircuit(3)
         qc_teleport.initialize(full_sv, [0, 1, 2])
-
         # Step 1: Create Entanglement
         qc_teleport.h(1)
         qc_teleport.cx(1, 2)
-        qc_teleport.barrier()
-
         # Step 2: Alice's local operations (Projecting into the Bell Basis)
         qc_teleport.cx(0, 1)
         qc_teleport.h(0)
-        qc_teleport.barrier()
-
-        # Step 3 & 4: Quantum Feedforward (Deferred Measurement Principle)
-        # Instead of measuring Qubit 1 to conditionally apply X, we use a CNOT.
-        qc_teleport.cx(1, 2)
-
-        # Instead of measuring Qubit 0 to conditionally apply Z, we use a CZ.
-        qc_teleport.cz(0, 2)
 
         challenges["Level 5: Quantum Teleportation"] = {
             "num_qubits": 3,
