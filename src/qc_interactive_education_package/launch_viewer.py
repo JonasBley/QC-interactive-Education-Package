@@ -131,7 +131,8 @@ class QuantumViewer:
     """
 
     def __init__(self, mode="sandbox", num_qubits=None, initial_state=None, target_state=None, show_circuit=True,
-                 preloaded_circuit=None, available_gates=None, max_gate_count=None, show_final_state=True, show_annotations=True):
+                 preloaded_circuit=None, available_gates=None, max_gate_count=None, show_final_state=True,
+                 show_annotations=True):
         # Dedicated output container for the interactive canvases
         self.viewer_output = widgets.Output(layout={'width': '100%', 'margin': '20px 0px 0px 0px'})
 
@@ -142,8 +143,25 @@ class QuantumViewer:
         self.title = widgets.HTML(
             "<h1 style='text-align: center; color: #2c3e50; margin-top: 0px;'>Quantum Viewer</h1>")
         self.subtitle = widgets.HTML(
-            "<h4 style='text-align: center; color: #7f8c8d; margin-bottom: 20px;'>Select your learning environment</h4>")
-        self.header = widgets.VBox([self.title, self.subtitle], layout={'width': '100%'})
+            "<h4 style='text-align: center; color: #7f8c8d; margin-bottom: 10px;'>Select your learning environment</h4>")
+
+        # --- HEADER INJECTION (with perfectly aligned inline SVGs) ---
+
+        # Official GitHub Logo (Color: #2980b9)
+        gh_icon = "<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='14' height='14' fill='%232980b9'%3E%3Cpath d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z'/%3E%3C/svg%3E\" style=\"vertical-align: -2px; margin-right: 5px;\"/>"
+
+        # Open Book Icon (Color: #27ae60)
+        book_icon = "<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='14' height='14' fill='%2327ae60'%3E%3Cpath d='M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z'/%3E%3C/svg%3E\" style=\"vertical-align: -2px; margin-right: 5px;\"/>"
+
+        self.repo_links = widgets.HTML(
+            f"<div style='text-align: center; font-family: sans-serif; font-size: 14px; margin-bottom: 20px;'>"
+            f"<a href='https://github.com/QuanTUK/QC-interactive-Education-Package' target='_blank' style='color: #2980b9; text-decoration: none; font-weight: bold;'>{gh_icon}View Source on GitHub</a>"
+            f" &nbsp;&nbsp;&bull;&nbsp;&nbsp; "
+            f"<a href='https://github.com/QuanTUK/visual_intro_to_QC' target='_blank' style='color: #27ae60; text-decoration: none; font-weight: bold;'>{book_icon}Try our Visual Introduction to QC</a>"
+            f"</div>"
+        )
+
+        self.header = widgets.VBox([self.title, self.subtitle, self.repo_links], layout={'width': '100%'})
 
         self.tab = widgets.Tab(layout={'width': '500px', 'min_height': '250px'})
 
@@ -164,9 +182,22 @@ class QuantumViewer:
         # A subtle visual separator to distinguish the menu from the active workspace
         self.divider = widgets.HTML("<hr style='border: 1px solid #e0e0e0; width: 90%; margin: 15px auto;'>")
 
-        # The master application layout
-        self.app_container = widgets.VBox([self.menu_container, self.divider, self.viewer_output],
-                                          layout={'width': '100%'})
+        # --- FOOTER INJECTION ---
+
+        # Legal Document Icon (Color: #95a5a6)
+        license_icon = "<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='13' height='13' fill='%2395a5a6'%3E%3Cpath d='M2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V4.664a.25.25 0 0 0-.073-.177l-2.914-2.914a.25.25 0 0 0-.177-.073ZM8 11.5A3.5 3.5 0 1 0 8 4.5a3.5 3.5 0 0 0 0 7Zm0-1.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z'/%3E%3C/svg%3E\" style=\"vertical-align: -2px; margin-right: 4px;\"/>"
+
+        self.footer = widgets.HTML(
+            f"<div style='text-align: center; margin-top: 40px; padding-top: 20px; font-family: sans-serif; font-size: 13px; color: #95a5a6; border-top: 1px solid #ecf0f1; width: 100%;'>"
+            f"&copy; QuanTUK &nbsp;|&nbsp; Released under the {license_icon}<a href='https://opensource.org/licenses/MIT' target='_blank' style='color: #95a5a6; text-decoration: underline;'>MIT License</a>."
+            f"</div>"
+        )
+
+        # The master application layout (Footer appended to the bottom)
+        self.app_container = widgets.VBox(
+            [self.menu_container, self.divider, self.viewer_output, self.footer],
+            layout={'width': '100%'}
+        )
 
         # Clean the states for pure inline instantiation as well
         initial_state = _sanitize_state(initial_state)
