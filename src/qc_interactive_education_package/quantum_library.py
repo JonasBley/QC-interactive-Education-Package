@@ -452,17 +452,41 @@ class QuantumCurriculum:
         challenges["Level 4: Construct a GHZ state"] = {
             "num_qubits": 3,
             "initial_state": [1.0] + [0.0] * 7,
-            "target_state": Statevector.from_instruction(qc_ghz).data.tolist(),
+            "target_state": Statevector.from_instruction(qc_ghz),
             "preloaded_circuit": make_hint(3,
                                            r"To build a tripartite GHZ state, first construct a standard Bell State between $q_0$ and $q_1$, and then cascade a second `CX` gate from $q_1$ to $q_2$."),
             "available_gates": ['H', 'X', 'Y', 'Z'],
             "max_gate_count": 3
         }
 
+        # Remove global phase: rotate so the global phase is 0 (first element becomes real). This doesn't change the physics.
+        psi = random_statevector(2)
+        psi = Statevector(np.exp(-1j * np.angle(psi.data[0])) * psi.data)
+        full_sv = Statevector.from_label('00').tensor(psi)
+        qc_teleport = QuantumCircuit(3)
+        qc_teleport.initialize(full_sv, [0, 1, 2])
+
+        # Step 1: Create Entanglement
+        qc_teleport.h(1)
+        qc_teleport.cx(1, 2)
+        qc_teleport.barrier()
+
+        # Step 2: Alice's local operations (Projecting into the Bell Basis)
+        qc_teleport.cx(0, 1)
+        qc_teleport.h(0)
+        qc_teleport.barrier()
+
+        # Step 3 & 4: Quantum Feedforward (Deferred Measurement Principle)
+        # Instead of measuring Qubit 1 to conditionally apply X, we use a CNOT.
+        qc_teleport.cx(1, 2)
+
+        # Instead of measuring Qubit 0 to conditionally apply Z, we use a CZ.
+        qc_teleport.cz(0, 2)
+
         challenges["Level 5: Quantum Teleportation"] = {
             "num_qubits": 3,
-            "initial_state": random_statevector(2),
-            "target_state": [inv_sq2, -inv_sq2, inv_sq2, -inv_sq2, -inv_sq2, inv_sq2, inv_sq2, -inv_sq2],
+            "initial_state": full_sv,
+            "target_state": Statevector.from_instruction(qc_teleport),
             "preloaded_circuit": make_hint(3,
                                            r"You must bind Bob (qubit 3) to Alice (qubit 2) using a Bell State, then mathematically fuse Alice's random state (qubit 1) into the Bell pair using `CX` and `H` gates. The measurement, in the end, would then yield a state that can be correct to the initial state of qubit 1."),
             "available_gates": ['H', 'X', 'Y', 'Z'],
