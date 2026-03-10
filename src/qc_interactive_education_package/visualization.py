@@ -23,7 +23,7 @@ class Visualization:
     """
 
     # FIXED: Added figsize to the base constructor to persist dimensions across redraws
-    def __init__(self, simulator, parse_math=True, figsize=(8.0, 6.0), **kwargs):
+    def __init__(self, simulator, parse_math=True, figsize=(8.0, 6.0), zero_indexed=True, **kwargs):
         self._sim = simulator
         self.fig = None
         self._lastState = None
@@ -35,7 +35,8 @@ class Visualization:
             "transparent": True,
             "showValues": False,
             "bitOrder": simulator._bitOrder,
-            "figsize": figsize  # <--- Locked in state
+            "figsize": figsize,
+            "zero_indexed": zero_indexed
         }
 
     def exportPNG(self, fname: str, title=""):
@@ -66,6 +67,11 @@ class Visualization:
         self._lastState = None
 
         return b64encode(buf.getvalue()).decode('utf-8')
+
+    def _q_label(self, math_index):
+        """Returns the localized display string given a 0-indexed mathematical qubit index."""
+        offset = 0 if self._params.get("zero_indexed", True) else 1
+        return f"Qubit {math_index + offset}"
 
     def _exportBuffer(self, formatStr, title=""):
         buf = BytesIO()
@@ -369,7 +375,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     x_pos + 1.2,
                     y_pos + 0.3,
-                    "Qubit 1",
+                    self._q_label(0),
                     **self._textStyle
                 )
                 self._ax.arrow(x_pos, y_pos, 2.3, 0, **self._arrowStyle)
@@ -409,7 +415,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     self._coords[0, 1] / 2,
                     y + 3 * len_tick,
-                    "Qubit 1",
+                    self._q_label(0),
                     **self._textStyle,
                 )
             if amount_qubits == 1:
@@ -427,7 +433,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     x_pos - 0.15,
                     y_pos,
-                    "Qubit 2",
+                    self._q_label(1),
                     **self._textStyle,
                     rotation=90
                 )
@@ -466,7 +472,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     x - 3 * len_tick,
                     self._coords[0, 1] / 2,
-                    "Qubit 2",
+                    self._q_label(1),
                     **self._textStyle,
                     rotation=90,
                 )
@@ -482,7 +488,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     x + 0.55,
                     y - 0.55,
-                    "Qubit 3",
+                    self._q_label(2),
                     **self._textStyle,
                     rotation=45
                 )
@@ -520,7 +526,7 @@ class DimensionalCircleNotation(Visualization):
                 self._ax.text(
                     x + off1 + (middle_ticks) - 5.5 * len_tick_z,
                     y + off1 + (middle_ticks) + 5.5 * len_tick_z,
-                    "Qubit 3",
+                    self._q_label(2),
                     **self._textStyle,
                     rotation=45
                 )
@@ -569,7 +575,7 @@ class DimensionalCircleNotation(Visualization):
                     self._ax.text(
                         2 * quarter_axis_length - 2,
                         y + i + 3 * len_tick,
-                        f"Qubit {i}",
+                        self._q_label(i-1),
                         **self._textStyle,
                     )
                 else:
@@ -609,7 +615,7 @@ class DimensionalCircleNotation(Visualization):
                     self._ax.text(
                         x_pos - 3 * len_tick,
                         y - 2 * quarter_axis_length,
-                        f"Qubit {i}",
+                        self._q_label(i-1),
                         **self._textStyle,
                         rotation=90,
                     )

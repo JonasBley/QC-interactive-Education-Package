@@ -39,7 +39,11 @@ class InteractiveViewer:
     a live Dirac notation readout, and an optional ghosted circuit diagram.
     """
 
-    def __init__(self, num_qubits=3, initial_state=None, preloaded_circuit=None, show_circuit=True, show_annotations=False, available_gates=None, max_gate_count=None):
+    def __init__(self, num_qubits=3, initial_state=None, preloaded_circuit=None, show_circuit=True, show_annotations=False, available_gates=None, max_gate_count=None, zero_indexed=True):
+        # --- NEW INDEXING TOGGLE ---
+        self.zero_indexed = zero_indexed
+        self._q_offset = 0 if self.zero_indexed else 1
+
         self.num_qubits = min(num_qubits, 9)
         self.show_circuit = show_circuit
         self.show_annotations = show_annotations
@@ -91,10 +95,10 @@ class InteractiveViewer:
         )
 
         # Dynamic Qubit Selector for Bloch Spheres
-        bloch_options = list(range(1, self.num_qubits + 1))
+        bloch_options = list(range(self._q_offset, self.num_qubits + self._q_offset))
         self.bloch_qubit_dropdown = widgets.Dropdown(
             options=bloch_options,
-            value=1,
+            value=self._q_offset,
             description='Focus Qubit:',
             layout={'display': 'none', 'width': '160px'}
         )
@@ -132,14 +136,14 @@ class InteractiveViewer:
                                                     disabled=(self.num_qubits < 2),
                                                     layout={'width': '100px', 'margin': '0px 10px 0px 10px'})
 
-        qubit_options = list(range(1, self.num_qubits + 1))
+        qubit_options = list(range(self._q_offset, self.num_qubits + self._q_offset))
 
         self.target_selector = widgets.SelectMultiple(
-            options=qubit_options, value=(1,), description='Target(s):',
+            options=qubit_options, value=(self._q_offset,), description='Target(s):',
             rows=self.num_qubits, layout={'width': '160px'}
         )
         self.control_selector = widgets.SelectMultiple(
-            options=qubit_options, value=(2,) if self.num_qubits > 1 else tuple(),
+            options=qubit_options, value=(self._q_offset + 1,) if self.num_qubits > 1 else tuple(),
             description='Control(s):', disabled=True,
             rows=self.num_qubits, layout={'width': '160px'}
         )
@@ -476,7 +480,7 @@ class InteractiveViewer:
                 continue
 
             try:
-                qubit_indices = [qc.find_bit(q).index + 1 for q in instruction.qubits]
+                qubit_indices = [qc.find_bit(q).index + self._q_offset for q in instruction.qubits]
             except Exception:
                 qubit_indices = []
 
@@ -612,8 +616,9 @@ class InteractiveViewer:
         gate_str = self.gate_dropdown.value
         is_controlled = self.controlled_checkbox.value
         angle_radians = self.angle_input.value * np.pi
-        targets = [t - 1 for t in self.target_selector.value]
-        controls = [c - 1 for c in self.control_selector.value] if is_controlled else []
+        # Strip the display offset to get the 0-indexed mathematical target
+        targets = [t - self._q_offset for t in self.target_selector.value]
+        controls = [c - self._q_offset for c in self.control_selector.value] if is_controlled else []
 
         with self.console:
             self.console.clear_output()
@@ -627,8 +632,9 @@ class InteractiveViewer:
                 print(f"Validation Error: Intersection detected. Qubits {set(targets).intersection(controls)} cannot serve as both control and target.")
                 return
 
-        targets_ui = [t + 1 for t in targets]
-        controls_ui = [c + 1 for c in controls]
+        # Reapply the offset purely for the text history descriptions
+        targets_ui = [t + self._q_offset for t in targets]
+        controls_ui = [c + self._q_offset for c in controls]
         if is_controlled:
             action_desc = f"Apply Controlled-{gate_str} on Target(s): {targets_ui} with Control(s): {controls_ui}"
         else:
@@ -1114,10 +1120,18 @@ class InteractiveViewer:
                     self.image_widget.value = vis_bytes
                 else:
                     vis_class = self._get_active_vis_class()
+                    # Pass the mathematical index to the visualizer, and cascade the toggle downward
                     if self.vis_dropdown.value == 'Sphere Notation':
-                        vis = vis_class.from_qiskit(self.circuit, select_qubit=self.bloch_qubit_dropdown.value)
+                        vis = vis_class.from_qiskit(
+                            self.circuit,
+                            select_qubit=(self.bloch_qubit_dropdown.value - self._q_offset),
+                            zero_indexed=self.zero_indexed
+                        )
                     else:
-                        vis = vis_class.from_qiskit(self.circuit)
+                        vis = vis_class.from_qiskit(
+                            self.circuit,
+                            zero_indexed=self.zero_indexed
+                        )
 
                     with plt.rc_context({'figure.figsize': self.render_figsize, 'savefig.dpi': 300}):
                         b64_str = vis.exportBase64(formatStr='png')

@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------
+# Created March 2026 by Jonas Bley, jonas.bley@rptu.de
+# ----------------------------------------------------------------------------
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -142,7 +146,7 @@ def complex_to_bloch(vector):
 
 def select_qubits(n, sel_qubit):
     reordered_list = []
-    dif = int(2 ** (sel_qubit - 1))
+    dif = int(2 ** (sel_qubit))
     N = int(2 ** (n - 1))
 
     for i in range(2 * N):
@@ -287,7 +291,7 @@ class SphereNotation(Visualization):
         vectors = np.array(vectors, dtype=float)
 
         # Project out the axis of the selected qubit
-        spectator_vectors = np.delete(vectors, select_qubit - 1, axis=0)
+        spectator_vectors = np.delete(vectors, select_qubit, axis=0)
 
         num_spectators = amount_qubits - 1
         num_spheres = 2 ** num_spectators
@@ -380,30 +384,32 @@ class SphereNotation(Visualization):
         self._ax.set_ylim([min_y - pad_y, max_y + pad_y])
 
     def _draw_legend_axes(self, amount_qubits, select_qubit, d, x, y, len_tick):
-        """Determines placement for the disconnected legend axes."""
-        for k in range(1, amount_qubits + 1):
-            if k == select_qubit: continue
+        # We loop by mathematical index (0 to n-1), but geometry is still based on k
+        for idx in range(amount_qubits):
+            if idx == select_qubit: continue
+
+            k = idx + 1  # Geometric layout logic remains intact
 
             if k == 1:
                 start = [x + 0.5, y - 2] if amount_qubits == 1 else [x, y - 2] if amount_qubits == 2 else [x, y]
                 vec = [6.3, 0] if amount_qubits == 1 else [6.5, 0]
             elif k == 2:
-                # Correctly apply the y-shift for amount_qubits == 2 so it starts at y=5, not y=7
                 start = [x, y - 2] if amount_qubits == 2 else [x, y]
                 vec = [0, -6.0] if amount_qubits == 2 else [0, -8.0]
             elif k == 3:
-                start = [x, y]
+                start = [x, y];
                 vec = [d - 0.2, d - 0.2]
             else:
                 quarter_axis_length = 2 ** (k // 2)
                 if k % 2 == 0:
-                    start = [x, y + k]
+                    start = [x, y + k];
                     vec = [4 * quarter_axis_length, 0]
                 else:
-                    start = [x + 3 - k, y]
+                    start = [x + 3 - k, y];
                     vec = [0, -4 * quarter_axis_length]
 
-            self._draw_qubit_axis(f"Qubit {k}", start, vec, len_tick)
+            # Dynamically fetch the correct string ("Qubit 0" or "Qubit 1")
+            self._draw_qubit_axis(self._q_label(idx), start, vec, len_tick)
 
     def _draw_colorbar(self, amount_qubits, x):
         try:
@@ -488,5 +494,6 @@ class SphereNotation(Visualization):
         num_fixed = n_qubits - 1
         binary_string = ("{:0" + str(num_fixed) + "b}").format(index)
         label_list = list(binary_string)
-        label_list.insert(selected_qubit - 1, '-')
+        # Insert exactly at the 0-indexed location
+        label_list.insert(selected_qubit, '-')
         return "|" + "".join(label_list) + ">"
