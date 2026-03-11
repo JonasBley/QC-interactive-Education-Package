@@ -93,7 +93,7 @@ class QuantumCurriculum:
                                    "**Entanglement Generation:** A Hadamard and CNOT gate construct the maximally entangled Bell state $|\\Phi^+\\rangle$ between Qubits 1 and 2.")
 
         QuantumCurriculum.annotate(qc_teleport, 4,
-                                   "**Basis Transformation:** Alice interacts her message qubit (Qubit 0) with her half of the entangled pair (Qubit 1) using a CNOT followed by a Hadamard. This operation effectively projects the system into the Bell basis.")
+                                   "**Basis Transformation:** Alice interacts her message qubit (Qubit 0) with her half of the entangled pair (Qubit 1) using a CNOT followed by a Hadamard. This operation effectively projects the system into the Bell basis. Notice how the information previously stored in qubit 0 is now stored in qubit 2, while the last operations only acted along the axis of qubit 0 and 1! This is the crux of the teleportation algorihm and only works because of the previous entanglement between qubits 1 and 2.")
 
         QuantumCurriculum.annotate(qc_teleport, 7,
                                    "**Quantum Feedforward:** To satisfy the requirements of a unitary Statevector simulator, we utilize the *Deferred Measurement Principle*. Instead of extracting classical bits, Alice's qubits act as direct quantum controls for the corrective Pauli operations on Bob's qubit. The exact state $|\\psi\\rangle$ is successfully reconstructed on Qubit 2, successfully disentangling the system.")
@@ -117,7 +117,7 @@ class QuantumCurriculum:
         # Steps 2-5: Generate uniform superposition
         for q in range(4):
             qc_dj.h(q)
-        QuantumCurriculum.annotate(qc_dj, 5,
+        QuantumCurriculum.annotate(qc_dj, 2,
                                    r"We apply **Hadamard** gates to all qubits. The input register is now in a uniform superposition of all $2^n$ basis states, and the ancilla is in the negative phase state $|-\rangle$.")
 
         # Step 6: Encapsulate and apply the Balanced Oracle
@@ -130,12 +130,12 @@ class QuantumCurriculum:
 
         qc_dj.append(oracle.to_gate(label="Balanced Oracle"), range(4))
         QuantumCurriculum.annotate(qc_dj, 6,
-                                   r"We apply the **Balanced Oracle**. By entangling the inputs to the $|-\rangle$ ancilla via **CNOT** gates, the function's output is written directly into the phase of the input superposition. The global state vectors are now mathematically shifted.")
+                                   r"We apply the **Balanced Oracle**, here: cascading CX gates from each input to the ancilla (you can see it via the 'unpack custom gates' option at the top). By entangling the inputs to the $|-\rangle$ ancilla via **CNOT** gates, the function's output is written directly into the phase of the input superposition via phase kickback! The global state vectors are now mathematically shifted.")
 
         # Steps 7-9: Interference and measurement preparation
         for q in range(3):
             qc_dj.h(q)
-        QuantumCurriculum.annotate(qc_dj, 9,
+        QuantumCurriculum.annotate(qc_dj, 7,
                                    r"We apply final **Hadamard** gates to the input register to force interference. Because exactly half the phases were flipped by the balanced oracle, destructive interference mathematically eliminates the $|000\rangle$ amplitude. Any measurement will yield a non-zero state, definitively proving the function is balanced.")
 
         algos["Deutsch-Jozsa Algorithm: Balanced (3Q Input)"] = qc_dj
@@ -188,12 +188,12 @@ class QuantumCurriculum:
             step_counter = 2
             for i in range(optimal_iterations):
                 qc.append(oracle_gate, range(n))
-                QuantumCurriculum.annotate(qc, step_counter,
+                QuantumCurriculum.annotate(qc, step_counter+3,
                                            f"Iteration {i + 1}: The **Oracle** isolates the target string $|{target_bitstring}\\rangle$ and applies a geometric reflection, flipping its phase (amplitude) to negative.")
                 step_counter += 1
 
                 qc.append(diffuser_gate, range(n))
-                QuantumCurriculum.annotate(qc, step_counter,
+                QuantumCurriculum.annotate(qc, step_counter+3,
                                            f"Iteration {i + 1}: The **Diffuser** performs an inversion about the mean. Notice how this geometrically drains the amplitude from the uniform states and physically amplifies the target state.")
                 step_counter += 1
 
@@ -274,15 +274,15 @@ class QuantumCurriculum:
         U_identity2 = UnitaryGate(np.eye(8), label="5^4 mod 6 (Identity)").control(1)
 
         qc_shor_6q.append(U_gate, [0, 3, 4, 5])
-        QuantumCurriculum.annotate(qc_shor_6q, 1,
+        QuantumCurriculum.annotate(qc_shor_6q, 2,
                                    "We apply $5^1 \\bmod 6$. This unitary rotation mathematically shifts the amplitudes and accumulates a phase in the counting register via Phase Kickback.")
 
         qc_shor_6q.append(U_identity, [1, 3, 4, 5])
-        QuantumCurriculum.annotate(qc_shor_6q, 2,
+        QuantumCurriculum.annotate(qc_shor_6q, 3,
                                    "We apply $5^2 \\bmod 6$. Because $5^2 = 25 \\equiv 1 \\bmod 6$, this operator trivially collapses to the Identity matrix. No amplitude shift occurs.")
 
         qc_shor_6q.append(U_identity2, [2, 3, 4, 5])
-        QuantumCurriculum.annotate(qc_shor_6q, 3,
+        QuantumCurriculum.annotate(qc_shor_6q, 4,
                                    "We apply $5^4 \\bmod 6$. This also evaluates to Identity. The early saturation of these higher-order exponentiations explicitly proves the period is $r=2$.")
 
         def qft_dagger(n):
@@ -296,7 +296,7 @@ class QuantumCurriculum:
             return qc.to_gate(label="Inverse QFT")
 
         qc_shor_6q.append(qft_dagger(n_count), range(n_count))
-        QuantumCurriculum.annotate(qc_shor_6q, 4,
+        QuantumCurriculum.annotate(qc_shor_6q, 5,
                                    "The **Inverse Quantum Fourier Transform** perfectly resolves the accumulated kickback phases, collapsing the counting register exclusively into the fraction periods $0$ and $4$. ($4/8 = 1/2$, yielding period $r=2$).")
 
         algos["Shor's Algorithm: Period Finding (a=5, N=6)"] = qc_shor_6q
@@ -371,33 +371,86 @@ class QuantumCurriculum:
                                    "⚠️ **ERROR INJECTED:** A quantum noise event (X-gate) strikes $q_0$, flipping it back to $|0\\rangle$. The system is now corrupted into the state $|011\\rangle$.")
         qc_3q_err.cx(0, 1)
         qc_3q_err.cx(0, 2)
-        QuantumCurriculum.annotate(qc_3q_err, 6,
+        QuantumCurriculum.annotate(qc_3q_err, 5,
                                    "Syndrome Measurement: We compute the parity of the qubits using CNOTs. This maps the error syndrome into the ancilla space without collapsing the logical superposition.")
         qc_3q_err.ccx(1, 2, 0)
         QuantumCurriculum.annotate(qc_3q_err, 7,
                                    "Correction: The Toffoli (CCX) gate acts as an autonomous classical logic switch, flipping $q_0$ back to its correct state exclusively if the syndrome flags an error. The state is restored to $|111\\rangle$.")
         algos["Error Correction: 3-Qubit Bit-Flip"] = qc_3q_err
 
-        # --- Algorithm 7: 7-Qubit Steane Code (Logical |0>) ---
+        # ==========================================
+        # ALGORITHM 7: 7-Qubit Steane Code (Logical |0>)
+        # ==========================================
         qc_steane = QuantumCircuit(7)
         QuantumCurriculum.annotate(qc_steane, 0,
-                                   "We initialize the Steane [[7,1,3]] Error Correction code. This CSS code can simultaneously correct both bit-flip (X) and phase-flip (Z) errors.")
+                                   "We initialize the Steane [[7,1,3]] Error Correction code. This CSS code can simultaneously correct both bit-flip (X) and phase-flip (Z) errors on any single qubit.")
+
+        # --- 1. Encoding ---
         qc_steane.h([0, 1, 2])
         QuantumCurriculum.annotate(qc_steane, 1,
                                    "Hadamard gates prepare the three data qubits into a uniform superposition.")
+
         qc_steane.cx(0, 3);
-        qc_steane.cx(1, 3);
-        qc_steane.cx(0, 4)
-        qc_steane.cx(2, 4);
+        qc_steane.cx(1, 3)
+        qc_steane.cx(0, 4);
+        qc_steane.cx(2, 4)
         qc_steane.cx(1, 5);
         qc_steane.cx(2, 5)
         qc_steane.cx(0, 6);
         qc_steane.cx(1, 6);
         qc_steane.cx(2, 6)
-        QuantumCurriculum.annotate(qc_steane, 10,
+        QuantumCurriculum.annotate(qc_steane, 4,
                                    "A highly specific array of parity operations encodes the logical $|0\\rangle_L$ state into the 7 physical qubits using the classical Hamming code topology.")
-        algos["Error Correction: Steane [[7,1,3]] Code"] = qc_steane
 
+        qc_steane.barrier()
+
+        # --- 2. Error Injection ---
+        qc_steane.x(0)
+        qc_steane.z(0)
+        QuantumCurriculum.annotate(qc_steane, len(qc_steane.data),
+                                   "⚠️ **ERROR INJECTED:** A severe noise event strikes $q_0$, causing both a bit-flip (X) and a phase-flip (Z). This is mathematically equivalent to a lethal Y-error. The logical state is now severely corrupted.")
+
+        qc_steane.barrier()
+
+        # --- 3. Decoding (Inverse Encoding) ---
+        qc_steane.cx(2, 6);
+        QuantumCurriculum.annotate(qc_steane, len(qc_steane.data),
+                                   "To isolate the error without using auxiliary syndrome qubits, we apply the exact inverse of the encoding circuit. If no error had occurred, this would return the system flawlessly to $|0000000\\rangle$.")
+        qc_steane.cx(1, 6);
+        qc_steane.cx(0, 6)
+        qc_steane.cx(2, 5);
+        qc_steane.cx(1, 5)
+        qc_steane.cx(2, 4);
+        qc_steane.cx(0, 4)
+        qc_steane.cx(1, 3);
+        qc_steane.cx(0, 3)
+        qc_steane.h([0, 1, 2])
+
+        qc_steane.barrier()
+
+        # --- 4. Autonomous Unitary Correction ---
+        qc_steane.z(0)
+        qc_steane.x([0, 3, 4, 6])
+        QuantumCurriculum.annotate(qc_steane, len(qc_steane.data),
+                                   "**Correction:** The Y-error has deterministically collapsed into a unique geometric footprint, altering the state to $-|1001101\\rangle$. We apply corrective X-gates to clear the physical bit-flips on qubits 0, 3, 4, and 6, and a Z-gate to clear the negative phase.")
+
+        qc_steane.barrier()
+
+        # --- 5. Re-encoding ---
+        qc_steane.h([0, 1, 2])
+        qc_steane.cx(0, 3);
+        qc_steane.cx(1, 3)
+        qc_steane.cx(0, 4);
+        qc_steane.cx(2, 4)
+        qc_steane.cx(1, 5);
+        qc_steane.cx(2, 5)
+        qc_steane.cx(0, 6);
+        qc_steane.cx(1, 6);
+        qc_steane.cx(2, 6)
+        QuantumCurriculum.annotate(qc_steane, len(qc_steane.data),
+                                   "With the error mathematically neutralized and the vacuum state restored, we run the encoding array a second time. The logical $|0\\rangle_L$ state is flawlessly reconstructed, surviving a multi-axis strike.")
+
+        algos["Error Correction: Steane [[7,1,3]] Code"] = qc_steane
 
 
         return algos

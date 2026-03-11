@@ -1065,7 +1065,7 @@ class InteractiveViewer:
                                 <div style="background-color: #042c58; color: white; padding: 15px 20px; border-radius: 6px; display: flex; align-items: flex-start; margin: 10px 0px 15px 0px; box-shadow: 0 4px 6px rgba(0,0,0,0.15);">
                                     <div style="font-size: 24px; margin-right: 15px; margin-top: -2px;">{icon}</div>
                                     <div style="font-family: sans-serif; font-size: 15px; line-height: 1.5; width: 100%;">
-                                        <b style="color: #f1c40f; font-size: 16px;">{title}:</b> {parsed_text}{' (press redo to proceed)' if is_eval else ''}
+                                        <b style="color: #f1c40f; font-size: 16px;">{title}:</b> {parsed_text}{' (press redo to proceed)' if not is_eval else ''}
                                     </div>
                                 </div>
                                 """
